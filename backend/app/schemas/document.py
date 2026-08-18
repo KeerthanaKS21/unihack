@@ -46,6 +46,7 @@ class DocumentResponse(BaseModel):
     extracted_summary: Optional[str] = None
     extracted_attributes: Optional[Dict[str, str]] = {}
     source_citations: Optional[List[Dict[str, Any]]] = []
+    extracted_text: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

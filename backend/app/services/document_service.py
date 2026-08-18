@@ -70,7 +70,8 @@ class DocumentService:
             pages_count=pages_count,
             extracted_summary=extracted_summary,
             extracted_attributes=extracted_attributes,
-            source_citations=source_citations
+            source_citations=source_citations,
+            extracted_text=extracted_data.get("extracted_text")
         )
 
         db.add(doc_record)

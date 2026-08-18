@@ -627,7 +627,8 @@ export default function UploadIngestPage() {
                       ? doc.source_citations
                       : [
                           { page: 1, snippet: `Authoritative ${docType} document retained for traceability.` }
-                        ]
+                        ],
+                    extractedText: doc.extracted_text
                   });
 
                   return (

@@ -91,6 +91,7 @@ export interface IngestedDocument {
   pagesCount: number;
   extractedAttributes: Record<string, string>;
   sourceCitations: { page: number; snippet: string; boundingBox?: string }[];
+  extractedText?: string;
 }
 
 export interface CatalogIssue {
