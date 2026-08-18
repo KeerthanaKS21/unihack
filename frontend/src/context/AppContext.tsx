@@ -100,6 +100,7 @@ interface AppContextType {
   // AI Chat Messages
   salesMessages: AIMessage[];
   sendSalesMessage: (userText: string) => void;
+  clearSalesMessages: () => void;
   askCatalogMessages: AIMessage[];
   sendAskCatalogMessage: (userText: string) => void;
 
@@ -654,7 +655,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // AI Sales Chat
+  // AI Sales Chat Session ID
+  const [salesConversationId] = useState<string>(() => 'conv-' + Math.random().toString(36).substring(2, 9));
+
+  const clearSalesMessages = () => {
+    setSalesMessages([]);
+    showToast({
+      type: 'info',
+      title: 'Conversation Reset',
+      message: 'Sales Assistant session cleared.'
+    });
+  };
+
   const sendSalesMessage = (userText: string) => {
     const userMsg: AIMessage = {
       id: 'msg-' + Math.random().toString(36).substring(2, 7),
@@ -665,79 +677,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSalesMessages(prev => [...prev, userMsg]);
 
-    // Simulated Smart Response Routing
-    setTimeout(() => {
-      let routedModule: AIMessage['routedModule'] = 'Product Search';
-      let replyText = '';
-      let actionCard: AIMessage['actionCard'] = undefined;
-      let citations: AIMessage['sourceCitations'] = undefined;
-      let isMissingData = false;
+    const loadingId = 'loading-' + Math.random().toString(36).substring(2, 7);
+    const loadingMsg: AIMessage = {
+      id: loadingId,
+      sender: 'assistant',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: 'Checking verified databases and comparing supplier specifications...',
+      routedModule: undefined
+    };
+    setSalesMessages(prev => [...prev, loadingMsg]);
 
-      const lower = userText.toLowerCase();
+    api.postSalesAssistantChat(userText, salesConversationId)
+      .then(res => {
+        setSalesMessages(prev => {
+          const filtered = prev.filter(m => m.id !== loadingId);
+          
+          let moduleLabel: AIMessage['routedModule'] = 'Product Search';
+          const intentUpper = (res.intent || '').toUpperCase();
+          if (intentUpper === 'PRODUCT_SEARCH') moduleLabel = 'Product Search';
+          else if (intentUpper === 'PROCUREMENT') moduleLabel = 'Procurement';
+          else if (intentUpper === 'QUOTATION') moduleLabel = 'Quotation';
+          else if (intentUpper === 'COMPATIBILITY') moduleLabel = 'Compatibility';
+          else if (intentUpper === 'COMPLIANCE') moduleLabel = 'Compliance';
+          else if (intentUpper === 'CHANGE_IMPACT') moduleLabel = 'Change Impact';
+          else if (intentUpper === 'GENERAL') moduleLabel = 'Catalog Exploration';
 
-      if (lower.includes('xyz-450') && (lower.includes('spec') || lower.includes('tell me') || lower.includes('about'))) {
-        routedModule = 'Product Search';
-        replyText = `**XYZ-450 Industrial Motor (Siemens)**:\n\n• **Power**: 7.5 kW (Upgraded from 5.5 kW in v2.0)\n• **Voltage**: 415 V (3-Phase 50 Hz)\n• **Speed**: 1460 RPM\n• **Enclosure**: IP55 Cast Iron TEFC\n• **Efficiency**: 91.2% (IE3 Premium)\n\nAll specifications are verified from ingested engineering datasheets.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'XYZ-450 7.5 kW 415V 1460 RPM specifications', verified: true }
-        ];
-        actionCard = { title: 'Inspect Master Product Specifications', label: 'View XYZ-450', url: '/synchronization' };
-      } else if (lower.includes('quote') || lower.includes('prepare') || lower.includes('pricing') || lower.includes('20')) {
-        routedModule = 'Quotation';
-        replyText = `I have drafted an automated quotation for 20 units of **XYZ-450-IE3** at ₹39,500/unit (Subtotal: ₹790,000 + GST & Freight). Stock of 45 units is confirmed with 4-day dispatch.`;
-        citations = [
-          { docName: 'supplier_catalog_abb_motors_2026.xlsx', page: 1, snippet: 'Direct Channel OEM rate contract #AGR-2026-99', verified: true }
-        ];
-        actionCard = { title: 'Review Generated Quotation Q-2026-9042', label: 'Open RFQ / Quote Module', url: '/quotes' };
-      } else if (lower.includes('equivalent') || lower.includes('compare') || lower.includes('5.5') || lower.includes('procurement')) {
-        routedModule = 'Procurement';
-        replyText = `Found 3 exact supplier matches and 2 closest alternatives for 415V IP55 motors:\n\n1. **Siemens Direct**: ₹39,500 (4 days lead time, 100% match)\n2. **Crompton Apex**: ₹38,200 (7 days lead time, exact match)\n3. **ABB M3BP**: ₹42,500 (14 days lead time - delivery constraint exceeded)\n4. **WEG W21**: ₹36,000 (IP54 fails mandatory IP55 industrial spec)`;
-        citations = [
-          { docName: 'supplier_catalog_abb_motors_2026.xlsx', page: 1, snippet: 'Multi-vendor industrial catalog index 2026', verified: true }
-        ];
-        actionCard = { title: 'Explore Multi-Supplier Constraint Filter', label: 'Open Procurement View', url: '/procurement' };
-      } else if (lower.includes('pump') || lower.includes('compatible') || lower.includes('controller') || lower.includes('drive')) {
-        routedModule = 'Compatibility';
-        replyText = `**Compatibility Analysis for XYZ-450 (7.5 kW)**:\n\n• **Pump P-200**: ✓ COMPATIBLE (Matches 7.2 kW absorbed power requirement)\n• **Coupling CP-50**: ✓ COMPATIBLE (Matches 38mm shaft diameter)\n• **Controller ABC-100**: ⚠️ INCOMPATIBLE (Drive capacity is 5.5 kW max; 7.5 kW load will trip overcurrent).`;
-        citations = [
-          { docName: 'kirloskar_p200_pump_manual.pdf', page: 2, snippet: 'Pump power requirement 7.5 kW at 1450 RPM', verified: true },
-          { docName: 'schneider_atv_drives_v3.pdf', page: 3, snippet: 'Max motor power capacity 5.5 kW', verified: true }
-        ];
-        actionCard = { title: 'Inspect Multi-Node Compatibility Graph', label: 'Open Compatibility Module', url: '/compatibility' };
-      } else if (lower.includes('changed') || lower.includes('difference') || lower.includes('history')) {
-        routedModule = 'Change Impact';
-        replyText = `**Changes detected between v1.4 and v2.0 for XYZ-450**:\n\n1. **Power**: 5.5 kW → 7.5 kW (+36.4% upgrade)\n2. **Speed**: 1440 RPM → 1460 RPM (+20 RPM)\n3. **Weight**: 42 kg → 45 kg (+3 kg frame expansion)\n\n4 cross-domain operational impacts are flagged for engineering review.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Revision delta summary v1.4 to v2.0', verified: true }
-        ];
-        actionCard = { title: 'Review Cross-Domain Change Impacts', label: 'Open Change Impact View', url: '/change-impact' };
-      } else if (lower.includes('noise') || lower.includes('dba') || lower.includes('sound') || lower.includes('decibel')) {
-        routedModule = 'Product Search';
-        isMissingData = true;
-        replyText = `I don't have verified acoustic noise level (dBA) data for XYZ-450 in the ingested company documents (tested against \`technical_spec_2026.pdf\` and \`motor_specs.pdf\`).\n\n*Under our strict enterprise zero-hallucination policy, unverified technical values cannot be fabricated.* Please upload the OEM acoustic test certificate to ingest this attribute.`;
-        actionCard = { title: 'Upload Acoustic Test Certificate', label: 'Open Upload & Ingest', url: '/upload' };
-      } else {
-        routedModule = 'Product Search';
-        replyText = `Query processed across verified enterprise product intelligence data. XYZ-450 7.5 kW is the current active reference standard. All electrical and mechanical parameters are grounded in certified engineering documentation.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Master product record index', verified: true }
-        ];
-      }
+          // Normalize actions (can be array or single object)
+          const actionsArr = Array.isArray(res.actions) ? res.actions : res.actions ? [res.actions] : [];
 
-      const botMsg: AIMessage = {
-        id: 'msg-' + Math.random().toString(36).substring(2, 7),
-        sender: 'assistant',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: replyText,
-        routedModule,
-        confidence: isMissingData ? 0.0 : 0.98,
-        sourceCitations: citations,
-        isMissingDataDemonstration: isMissingData,
-        actionCard
-      };
-
-      setSalesMessages(prev => [...prev, botMsg]);
-    }, 700);
+          const botMsg: AIMessage = {
+            id: 'msg-' + Math.random().toString(36).substring(2, 7),
+            sender: 'assistant',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: res.answer,
+            routedModule: res.intent ? moduleLabel : undefined,
+            confidence: res.confidence,
+            sourceCitations: res.sources,
+            cardType: res.card_type,
+            cardData: res.card_data,
+            isMissingDataDemonstration: res.is_missing_data_demonstration,
+            actions: actionsArr,
+            actionCard: actionsArr.length > 0 ? actionsArr[0] : undefined
+          };
+          return [...filtered, botMsg];
+        });
+      })
+      .catch(err => {
+        setSalesMessages(prev => {
+          const filtered = prev.filter(m => m.id !== loadingId);
+          const errorMsg: AIMessage = {
+            id: 'msg-err-' + Math.random().toString(36).substring(2, 7),
+            sender: 'assistant',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: `Unable to connect to the Sales Assistant service. Please check your backend connection.`
+          };
+          return [...filtered, errorMsg];
+        });
+      });
   };
 
   // Ask Catalog AI Chat
@@ -832,6 +828,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveQuote,
         salesMessages,
         sendSalesMessage,
+        clearSalesMessages,
         askCatalogMessages,
         sendAskCatalogMessage,
         viewingProduct,

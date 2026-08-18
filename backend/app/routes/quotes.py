@@ -8,10 +8,35 @@ from app.schemas.quote import (
     QuoteResponse,
     QuoteRevisionRequest,
     QuoteItemCreate,
-    QuoteItemResponse
+    QuoteItemResponse,
+    QuoteMatchRequest,
+    QuoteMatchResult,
+    QuoteSimulateRevisionRequest,
+    QuoteSimulateRevisionResponse
 )
 
 router = APIRouter(prefix="/quotes", tags=["Quotes"])
+
+@router.post("/match", response_model=QuoteMatchResult, summary="Match natural language requirement against real uploaded datasheets & database")
+def match_requirements(
+    req: QuoteMatchRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Parses customer requirements, queries actual products and uploaded datasheets from the database,
+    matches engineering parameters, checks supplier procurement rate sheets, and generates verified quotation.
+    """
+    return QuoteService.match_requirements_and_generate_quote(db, req)
+
+@router.post("/simulate-revision", response_model=QuoteSimulateRevisionResponse, summary="Simulate quotation revision against live supplier inventories")
+def simulate_revision(
+    req: QuoteSimulateRevisionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Validates updated quantity and delivery SLA against active warehouse stock and supplier SLAs.
+    """
+    return QuoteService.simulate_revision(db, req)
 
 @router.get("", response_model=List[QuoteResponse], summary="List all generated industrial quotations")
 def list_quotes(

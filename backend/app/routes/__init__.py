@@ -11,6 +11,7 @@ from app.routes.certificates import router as certificates_router
 from app.routes.compatibility import router as compatibility_router
 from app.routes.quotes import router as quotes_router
 from app.routes.dashboard import router as dashboard_router
+from app.routes.sales_assistant import router as sales_assistant_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -26,5 +27,6 @@ api_router.include_router(suppliers_router)
 api_router.include_router(certificates_router)
 api_router.include_router(compatibility_router)
 api_router.include_router(quotes_router)
+api_router.include_router(sales_assistant_router)
 
 __all__ = ["api_router"]
