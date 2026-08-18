@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # File Storage
     UPLOAD_DIR: str = str(BASE_DIR / "uploads")
     MAX_FILE_SIZE_MB: int = 50
-    ALLOWED_EXTENSIONS: List[str] = ["pdf", "png", "jpg", "jpeg", "xlsx", "xls", "csv", "dwg", "dxf"]
+    ALLOWED_EXTENSIONS: List[str] = ["pdf", "png", "jpg", "jpeg", "xlsx", "xls", "csv", "docx"]
     
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
