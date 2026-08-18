@@ -9,6 +9,8 @@ from app.schemas.document import DocumentUploadResponse, DocumentResponse
 
 from app.services.pdf_processor import PDFProcessor
 from app.services.tabular_processor import TabularProcessor
+from app.services.image_processor import ImageProcessor
+from app.services.docx_processor import DocxProcessor
 
 class DocumentService:
     @staticmethod
@@ -41,6 +43,26 @@ class DocumentService:
                 extracted_data = {
                     "pages_count": 1,
                     "extracted_summary": f"Spreadsheet stored. Extraction note: {tab_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".png", ".jpg", ".jpeg", ".webp")):
+            try:
+                extracted_data = ImageProcessor.extract_image_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as img_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Image stored. Extraction note: {img_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".docx", ".doc")):
+            try:
+                extracted_data = DocxProcessor.extract_docx_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as docx_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Word document stored. Extraction note: {docx_err}",
                     "extracted_attributes": {},
                     "source_citations": []
                 }
