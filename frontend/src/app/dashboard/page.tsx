@@ -42,6 +42,8 @@ import {
   Pie
 } from 'recharts';
 
+import { api } from '@/lib/api';
+
 export default function DashboardPage() {
   const {
     catalogHealth,
@@ -54,6 +56,26 @@ export default function DashboardPage() {
     products,
     setViewingDocument
   } = useApp();
+
+  const [backendSummary, setBackendSummary] = React.useState<any>(null);
+  const [loadingSummary, setLoadingSummary] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    const fetchSummary = async () => {
+      setLoadingSummary(true);
+      try {
+        const data = await api.getDashboardSummary();
+        if (data) {
+          setBackendSummary(data);
+        }
+      } catch (e) {
+        // use local state
+      } finally {
+        setLoadingSummary(false);
+      }
+    };
+    fetchSummary();
+  }, []);
 
   const primaryProduct = products[0]; // XYZ-450
 

@@ -180,7 +180,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const loadBackendData = async () => {
       try {
-        const health = await api.getCatalogHealth();
+        // 1. Catalog Health
+        const health = await api.getCatalogHealth().catch(() => null);
         if (health) {
           setCatalogHealth(prev => ({
             ...prev,
@@ -194,8 +195,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             complianceIssuesCount: health.compliance_issues || prev.complianceIssuesCount,
           }));
         }
-      } catch {
-        // Backend offline or starting up, keep local mock state
+
+        // 2. Change Impacts from DB
+        const impacts = await api.getChangeImpacts().catch(() => null);
+        if (impacts && Array.isArray(impacts) && impacts.length > 0) {
+          setChangeImpacts(prev => prev.map(imp => {
+            const numMatch = imp.id.match(/\d+/);
+            const numId = numMatch ? parseInt(numMatch[0], 10) : null;
+            const dbImp = numId ? impacts.find(i => i.id === numId) : null;
+            if (dbImp) {
+              return {
+                ...imp,
+                reviewed: dbImp.reviewed,
+                reviewedAt: dbImp.reviewed_at ? new Date(dbImp.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : imp.reviewedAt,
+                reviewedBy: dbImp.reviewed_by || imp.reviewedBy,
+              };
+            }
+            return imp;
+          }));
+        }
+
+        // 3. Catalog Issues from DB
+        const issuesRes = await api.getCatalogIssues().catch(() => null);
+        if (issuesRes && Array.isArray(issuesRes.items) && issuesRes.items.length > 0) {
+          setCatalogIssues(prev => prev.map(iss => {
+            const numMatch = iss.id.match(/\d+/);
+            const numId = numMatch ? parseInt(numMatch[0], 10) : null;
+            const dbIss = numId ? issuesRes.items.find((i: any) => i.id === numId) : null;
+            if (dbIss) {
+              return {
+                ...iss,
+                status: dbIss.status.toLowerCase() as any,
+                resolvedValue: dbIss.resolved_value || iss.resolvedValue,
+              };
+            }
+            return iss;
+          }));
+        }
+
+        // 4. Quotations from DB
+        const quotes = await api.getQuotes().catch(() => null);
+        if (quotes && Array.isArray(quotes) && quotes.length > 0) {
+          const firstDbQuote = quotes[0];
+          if (firstDbQuote) {
+            setActiveQuote(prev => ({
+              ...prev,
+              quoteNumber: firstDbQuote.quote_number || prev.quoteNumber,
+              version: firstDbQuote.version || prev.version,
+              status: firstDbQuote.status || prev.status,
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Backend API hydration warning (using resilient defaults):', err);
       }
     };
     loadBackendData();
@@ -571,6 +623,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]
     };
 
+    // Call backend API for revision
+    const numMatch = quoteId.match(/\d+/);
+    const numId = numMatch ? parseInt(numMatch[0], 10) : 1;
+    api.requestQuoteRevision(numId, quantity, leadDays).catch(() => {});
+
     setQuotations(prev => prev.map(q => q.id === quoteId ? updatedQuote : q));
     setActiveQuote(updatedQuote);
 
@@ -584,6 +641,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const approveQuote = (quoteId: string) => {
+    const numMatch = quoteId.match(/\d+/);
+    const numId = numMatch ? parseInt(numMatch[0], 10) : 1;
+    api.approveQuote(numId, 'Sales Operations').catch(() => {});
+
     setQuotations(prev => prev.map(q => q.id === quoteId ? { ...q, status: 'Approved' } : q));
     setActiveQuote(prev => ({ ...prev, status: 'Approved' }));
     showToast({
