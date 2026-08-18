@@ -614,16 +614,20 @@ export default function UploadIngestPage() {
                     matchConfidence: doc.match_confidence || doc.matchConfidence || 0.95,
                     isSameProductDetected: true,
                     detectedChangesSummary: doc.extracted_summary || 'Document stored in repository with verified SHA-256 checksum.',
-                    pagesCount: doc.pages_count || doc.pagesCount || 2,
-                    extractedAttributes: doc.extracted_attributes || {
-                      'Original File': fileName,
-                      'Document Type': docType,
-                      'File Size': sizeFormatted,
-                      'Storage Status': 'Persisted in Database'
-                    },
-                    sourceCitations: doc.source_citations || [
-                      { page: 1, snippet: `Authoritative ${docType} document retained for traceability.` }
-                    ]
+                    pagesCount: doc.pages_count || doc.pagesCount || 1,
+                    extractedAttributes: (doc.extracted_attributes && Object.keys(doc.extracted_attributes).length > 0)
+                      ? doc.extracted_attributes
+                      : {
+                          'Original File': fileName,
+                          'Document Type': docType,
+                          'File Size': sizeFormatted,
+                          'Storage Status': 'Persisted in Database'
+                        },
+                    sourceCitations: (doc.source_citations && doc.source_citations.length > 0)
+                      ? doc.source_citations
+                      : [
+                          { page: 1, snippet: `Authoritative ${docType} document retained for traceability.` }
+                        ]
                   });
 
                   return (
