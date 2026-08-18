@@ -1,0 +1,230 @@
+{
+  "Motor + Controller": {
+    "source_product": "Motor-X500",
+    "target_product": "Controller-C7",
+    "status": "COMPATIBLE",
+    "score": 1.0,
+    "checks": [
+      {
+        "parameter": "Power",
+        "primaryValue": "7.5 kW",
+        "targetValue": "5.5-7.5 kW",
+        "status": "PASS",
+        "explanation": "Motor power is within controller supported range."
+      },
+      {
+        "parameter": "Voltage",
+        "primaryValue": "415 V",
+        "targetValue": "415 V",
+        "status": "PASS",
+        "explanation": "Voltages match."
+      }
+    ],
+    "explanation": "Compatibility verified."
+  },
+  "Motor + Pump": {
+    "source_product": "Motor-X500",
+    "target_product": "Pump-P12",
+    "status": "COMPATIBLE",
+    "score": 1.0,
+    "checks": [
+      {
+        "parameter": "Power",
+        "primaryValue": "7.5 kW",
+        "targetValue": "5.5-7.5 kW",
+        "status": "PASS",
+        "explanation": "Motor power meets pump requirements."
+      },
+      {
+        "parameter": "Speed",
+        "primaryValue": "1460 RPM",
+        "targetValue": "1400.0-1500.0 RPM",
+        "status": "PASS",
+        "explanation": "Motor speed is within pump required range."
+      }
+    ],
+    "explanation": "Compatibility verified."
+  },
+  "Motor + Coupling-C25": {
+    "source_product": "Motor-X500",
+    "target_product": "Coupling-C25",
+    "status": "INCOMPATIBLE",
+    "score": 0.0,
+    "checks": [
+      {
+        "parameter": "Shaft/Bore",
+        "primaryValue": "28.0 mm",
+        "targetValue": "25.0 mm",
+        "status": "FAIL",
+        "explanation": "The motor shaft is larger than the coupling bore by 3.0 mm."
+      }
+    ],
+    "explanation": "Incompatibilities found."
+  },
+  "Motor + Coupling-C28": {
+    "source_product": "Motor-X500",
+    "target_product": "Coupling-C28",
+    "status": "COMPATIBLE",
+    "score": 1.0,
+    "checks": [
+      {
+        "parameter": "Shaft/Bore",
+        "primaryValue": "28.0 mm",
+        "targetValue": "28.0 mm",
+        "status": "PASS",
+        "explanation": "Motor shaft matches coupling bore."
+      }
+    ],
+    "explanation": "Compatibility verified."
+  },
+  "System Check": {
+    "system_status": "INCOMPATIBLE",
+    "pair_results": [
+      {
+        "source_product": "Motor-X500",
+        "target_product": "Controller-C7",
+        "status": "COMPATIBLE",
+        "score": 1.0,
+        "checks": [
+          {
+            "parameter": "Power",
+            "primaryValue": "7.5 kW",
+            "targetValue": "5.5-7.5 kW",
+            "status": "PASS",
+            "explanation": "Motor power is within controller supported range."
+          },
+          {
+            "parameter": "Voltage",
+            "primaryValue": "415 V",
+            "targetValue": "415 V",
+            "status": "PASS",
+            "explanation": "Voltages match."
+          }
+        ],
+        "explanation": "Compatibility verified."
+      },
+      {
+        "source_product": "Motor-X500",
+        "target_product": "Pump-P12",
+        "status": "COMPATIBLE",
+        "score": 1.0,
+        "checks": [
+          {
+            "parameter": "Power",
+            "primaryValue": "7.5 kW",
+            "targetValue": "5.5-7.5 kW",
+            "status": "PASS",
+            "explanation": "Motor power meets pump requirements."
+          },
+          {
+            "parameter": "Speed",
+            "primaryValue": "1460 RPM",
+            "targetValue": "1400.0-1500.0 RPM",
+            "status": "PASS",
+            "explanation": "Motor speed is within pump required range."
+          }
+        ],
+        "explanation": "Compatibility verified."
+      },
+      {
+        "source_product": "Motor-X500",
+        "target_product": "Coupling-C25",
+        "status": "INCOMPATIBLE",
+        "score": 0.0,
+        "checks": [
+          {
+            "parameter": "Shaft/Bore",
+            "primaryValue": "28.0 mm",
+            "targetValue": "25.0 mm",
+            "status": "FAIL",
+            "explanation": "The motor shaft is larger than the coupling bore by 3.0 mm."
+          }
+        ],
+        "explanation": "Incompatibilities found."
+      }
+    ]
+  },
+  "Alternatives for Coupling-C25": [
+    {
+      "product_id": 11,
+      "product_name": "Coupling-C28",
+      "compatibility_score": 1.0,
+      "checks": [
+        {
+          "parameter": "Shaft/Bore",
+          "primaryValue": "28.0 mm",
+          "targetValue": "28.0 mm",
+          "status": "PASS",
+          "explanation": "Motor shaft matches coupling bore."
+        }
+      ]
+    }
+  ],
+  "Simulate Replacement": {
+    "system_status": "COMPATIBLE",
+    "pair_results": [
+      {
+        "source_product": "Motor-X500",
+        "target_product": "Controller-C7",
+        "status": "COMPATIBLE",
+        "score": 1.0,
+        "checks": [
+          {
+            "parameter": "Power",
+            "primaryValue": "7.5 kW",
+            "targetValue": "5.5-7.5 kW",
+            "status": "PASS",
+            "explanation": "Motor power is within controller supported range."
+          },
+          {
+            "parameter": "Voltage",
+            "primaryValue": "415 V",
+            "targetValue": "415 V",
+            "status": "PASS",
+            "explanation": "Voltages match."
+          }
+        ],
+        "explanation": "Compatibility verified."
+      },
+      {
+        "source_product": "Motor-X500",
+        "target_product": "Pump-P12",
+        "status": "COMPATIBLE",
+        "score": 1.0,
+        "checks": [
+          {
+            "parameter": "Power",
+            "primaryValue": "7.5 kW",
+            "targetValue": "5.5-7.5 kW",
+            "status": "PASS",
+            "explanation": "Motor power meets pump requirements."
+          },
+          {
+            "parameter": "Speed",
+            "primaryValue": "1460 RPM",
+            "targetValue": "1400.0-1500.0 RPM",
+            "status": "PASS",
+            "explanation": "Motor speed is within pump required range."
+          }
+        ],
+        "explanation": "Compatibility verified."
+      },
+      {
+        "source_product": "Motor-X500",
+        "target_product": "Coupling-C28",
+        "status": "COMPATIBLE",
+        "score": 1.0,
+        "checks": [
+          {
+            "parameter": "Shaft/Bore",
+            "primaryValue": "28.0 mm",
+            "targetValue": "28.0 mm",
+            "status": "PASS",
+            "explanation": "Motor shaft matches coupling bore."
+          }
+        ],
+        "explanation": "Compatibility verified."
+      }
+    ]
+  }
+}

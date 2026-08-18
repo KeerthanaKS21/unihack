@@ -18,6 +18,18 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   let IconComponent = Clock;
 
   if (
+    normalized.includes('critical') ||
+    normalized.includes('conflict') ||
+    normalized.includes('expired') ||
+    normalized.includes('non-compliant') ||
+    normalized.includes('incompatible') ||
+    normalized.includes('not recommended') ||
+    normalized.includes('rejected') ||
+    normalized.includes('missing')
+  ) {
+    colorClasses = 'bg-rose-50 text-rose-700 border-rose-200';
+    IconComponent = XCircle;
+  } else if (
     normalized.includes('verified') ||
     normalized.includes('compliant') ||
     normalized.includes('exact match') ||
@@ -41,18 +53,6 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   ) {
     colorClasses = 'bg-amber-50 text-amber-700 border-amber-200';
     IconComponent = AlertTriangle;
-  } else if (
-    normalized.includes('critical') ||
-    normalized.includes('conflict') ||
-    normalized.includes('expired') ||
-    normalized.includes('non-compliant') ||
-    normalized.includes('incompatible') ||
-    normalized.includes('not recommended') ||
-    normalized.includes('rejected') ||
-    normalized.includes('missing')
-  ) {
-    colorClasses = 'bg-rose-50 text-rose-700 border-rose-200';
-    IconComponent = XCircle;
   } else if (normalized.includes('processing') || normalized.includes('uploading') || normalized.includes('matched')) {
     colorClasses = 'bg-blue-50 text-blue-700 border-blue-200';
     IconComponent = Sparkles;

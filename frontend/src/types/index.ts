@@ -133,16 +133,16 @@ export interface CatalogIssue {
   id: string;
   productId: string;
   productModel: string;
-  issueType: 
-    | 'missing' 
-    | 'conflict' 
-    | 'duplicate' 
-    | 'invalid_unit' 
-    | 'wrong_category' 
-    | 'outdated' 
-    | 'compliance' 
-    | 'broken_relationship' 
-    | 'image_mismatch';
+  issueType:
+  | 'missing'
+  | 'conflict'
+  | 'duplicate'
+  | 'invalid_unit'
+  | 'wrong_category'
+  | 'outdated'
+  | 'compliance'
+  | 'broken_relationship'
+  | 'image_mismatch';
   field: string;
   title: string;
   description: string;
@@ -272,5 +272,9 @@ export interface AIMessage {
     title: string;
     label: string;
     url: string;
+  };
+  comparisonTable?: {
+    headers: string[];
+    rows: string[][];
   };
 }

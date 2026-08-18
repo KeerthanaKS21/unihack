@@ -24,7 +24,7 @@ export class ApiClientError extends Error {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-  
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -227,6 +227,11 @@ export const api = {
 
   // Compatibility
   getCompatibility: (productId: number = 1) => request<any[]>(`/compatibility/${productId}`),
+  checkCompatibility: (sourceId: number, targetId: number) => request<any>('/compatibility/check', { method: 'POST', body: JSON.stringify({ source_product_id: sourceId, target_product_id: targetId }) }),
+  checkSystemCompatibility: (productIds: number[]) => request<any>('/compatibility/system-check', { method: 'POST', body: JSON.stringify({ product_ids: productIds }) }),
+  findAlternatives: (targetId: number, sourceId: number) => request<any>('/compatibility/alternatives', { method: 'POST', body: JSON.stringify({ target_product_id: targetId, source_product_id: sourceId }) }),
+  simulateReplacement: (productIds: number[], replaceId: number, withId: number) => request<any>('/compatibility/simulate', { method: 'POST', body: JSON.stringify({ product_ids: productIds, replace_product_id: replaceId, with_product_id: withId }) }),
+  exploreCompatibleProducts: (productId: number) => request<any[]>(`/compatibility/explore/${productId}`),
 
   // Quotes
   getQuotes: (status?: string) => {
@@ -247,5 +252,12 @@ export const api = {
     request<any>(`/quotes/${id}/request-revision`, {
       method: 'POST',
       body: JSON.stringify({ quantity, delivery_days: deliveryDays, comments }),
+    }),
+
+  // Ask Catalog AI
+  askCatalog: (query: string, context?: any) =>
+    request<any>('/ask-catalog', {
+      method: 'POST',
+      body: JSON.stringify({ query, context }),
     }),
 };

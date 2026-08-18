@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from app.db.models.compatibility import Compatibility
 from app.db.models.product import Product
 from app.schemas.compatibility import CompatibilityCreate, CompatibilityUpdate
+from app.services.compatibility_engine import CompatibilityEngine
 
 class CompatibilityService:
     @staticmethod
@@ -17,36 +18,26 @@ class CompatibilityService:
             p_source = db.query(Product).filter(Product.id == r.product_id).first()
             p_target = db.query(Product).filter(Product.id == r.compatible_product_id).first()
 
-            checks = []
-            if "CTRL" in (p_source.product_code if p_source else "") or "CTRL" in (p_target.product_code if p_target else ""):
-                checks = [
-                    {"parameter": "Inverter Rated Power", "primaryValue": "7.5 kW", "targetValue": "5.5 kW max rating", "status": "FAIL", "explanation": "VFD rated for 5.5 kW; motor upgrade to 7.5 kW causes thermal trip at full torque."},
-                    {"parameter": "Operating Voltage", "primaryValue": "415 V 3-Phase", "targetValue": "380-480 V 3-Phase", "status": "PASS", "explanation": "Voltage input range compatible."},
-                    {"parameter": "Base Frequency", "primaryValue": "50 Hz", "targetValue": "0-400 Hz output", "status": "PASS", "explanation": "Frequency modulation capable."}
-                ]
-            else:
-                checks = [
-                    {"parameter": "Shaft Diameter", "primaryValue": "28 mm (Frame 132M)", "targetValue": "24 mm bore", "status": "FAIL", "explanation": "Coupling bore undersized for new Frame 132M 28mm shaft."},
-                    {"parameter": "Rated Torque Transmission", "primaryValue": "49.1 Nm", "targetValue": "80.0 Nm limit", "status": "PASS", "explanation": "Torque capacity within permissible envelope."}
-                ]
+            # Use real engine instead of mock data
+            engine_result = CompatibilityEngine.check_compatibility(db, r.product_id, r.compatible_product_id)
 
             results.append({
                 "id": r.id,
                 "product_id": r.product_id,
                 "compatible_product_id": r.compatible_product_id,
-                "primary_name": p_source.product_code if p_source else "XYZ-450",
-                "target_name": p_target.name if p_target else "Industrial Component",
-                "target_category": p_target.category if p_target else "Mechanical",
+                "primary_name": p_source.product_code if p_source else "Unknown",
+                "target_name": p_target.name if p_target else "Unknown Component",
+                "target_category": p_target.category if p_target else "Unknown",
                 "relationship_type": r.relationship_type,
-                "status": r.status,
-                "compatibility_score": r.compatibility_score,
-                "explanation": r.explanation,
+                "status": engine_result["status"],
+                "compatibility_score": engine_result["score"],
+                "explanation": engine_result["explanation"],
                 "affected_by_recent_change": r.affected_by_recent_change,
                 "evidence_document_id": r.evidence_document_id,
                 "confidence": r.confidence,
                 "verification_status": r.verification_status,
-                "relationship_chain": ["ABC-100 VFD Controller", "XYZ-450 Motor", "CP-50 Flexible Coupling", "P-200 Centrifugal Pump"],
-                "checks": checks,
+                "relationship_chain": [p_source.name if p_source else "", p_target.name if p_target else ""],
+                "checks": engine_result["checks"],
                 "created_at": r.created_at,
                 "updated_at": r.updated_at
             })

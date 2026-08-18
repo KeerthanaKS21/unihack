@@ -135,7 +135,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [catalogHealth, setCatalogHealth] = useState<CatalogHealthSummary>(initialCatalogHealth);
   const [catalogIssues, setCatalogIssues] = useState<CatalogIssue[]>(initialCatalogIssues);
   const [complianceRecords, setComplianceRecords] = useState<ComplianceRecord[]>(initialComplianceRecords);
-  const [compatibilityChecks] = useState<TechnicalCompatibilityCheck[]>(mockCompatibilityChecks);
+  const [compatibilityChecks, setCompatibilityChecks] = useState<TechnicalCompatibilityCheck[]>(mockCompatibilityChecks);
   const [supplierOffers] = useState<SupplierOffer[]>(mockSupplierOffers);
   const [quotations, setQuotations] = useState<Quotation[]>(initialQuotations);
   const [activeQuote, setActiveQuote] = useState<Quotation>(initialQuotations[0]);
@@ -263,6 +263,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               status: firstDbQuote.status || prev.status,
             }));
           }
+        }
+
+        // 5. Compatibility from DB
+        const compat = await api.getCompatibility(6).catch(() => null);
+        if (compat && Array.isArray(compat) && compat.length > 0) {
+          setCompatibilityChecks(compat.map((c: any) => ({
+            id: `compat-${c.id}`,
+            primaryProductId: `prod-${c.product_id}`,
+            targetProductId: `prod-${c.compatible_product_id}`,
+            primaryName: c.primary_name,
+            targetName: c.target_name,
+            targetCategory: c.target_category,
+            status: c.status === 'COMPATIBLE' ? 'Compatible' : (c.status === 'INCOMPATIBLE' ? 'Incompatible' : 'Warning'),
+            compatibilityScore: c.compatibilityScore || c.compatibility_score,
+            affectedByRecentChange: c.affected_by_recent_change,
+            relationshipChain: c.relationship_chain || [],
+            explanation: c.explanation,
+            checks: c.checks.map((chk: any) => ({
+              parameter: chk.parameter,
+              primaryValue: chk.primaryValue,
+              targetValue: chk.targetValue,
+              passed: chk.status === 'PASS',
+              notes: chk.explanation
+            }))
+          })));
         }
       } catch (err) {
         console.warn('Backend API hydration warning (using resilient defaults):', err);
@@ -399,7 +424,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // Call backend API
-        api.reviewChangeImpact(numId, nextState).catch(() => {});
+        api.reviewChangeImpact(numId, nextState).catch(() => { });
 
         return {
           ...imp,
@@ -414,7 +439,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markAllImpactsReviewed = () => {
     setChangeImpacts(prev => prev.map((imp, idx) => {
-      api.reviewChangeImpact(idx + 1, true).catch(() => {});
+      api.reviewChangeImpact(idx + 1, true).catch(() => { });
       return {
         ...imp,
         reviewed: true,
@@ -472,7 +497,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const numId = numMatch ? parseInt(numMatch[0], 10) : 1;
 
     // Call backend API
-    api.resolveCatalogIssue(numId, resolvedValue, note).catch(() => {});
+    api.resolveCatalogIssue(numId, resolvedValue, note).catch(() => { });
 
     setCatalogIssues(prev => prev.map(iss => {
       if (iss.id === issueId) {
@@ -644,7 +669,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Call backend API for revision
     const numMatch = quoteId.match(/\d+/);
     const numId = numMatch ? parseInt(numMatch[0], 10) : 1;
-    api.requestQuoteRevision(numId, quantity, leadDays).catch(() => {});
+    api.requestQuoteRevision(numId, quantity, leadDays).catch(() => { });
 
     setQuotations(prev => prev.map(q => q.id === quoteId ? updatedQuote : q));
     setActiveQuote(updatedQuote);
@@ -661,7 +686,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const approveQuote = (quoteId: string) => {
     const numMatch = quoteId.match(/\d+/);
     const numId = numMatch ? parseInt(numMatch[0], 10) : 1;
-    api.approveQuote(numId, 'Sales Operations').catch(() => {});
+    api.approveQuote(numId, 'Sales Operations').catch(() => { });
 
     setQuotations(prev => prev.map(q => q.id === quoteId ? { ...q, status: 'Approved' } : q));
     setActiveQuote(prev => ({ ...prev, status: 'Approved' }));
@@ -759,7 +784,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Ask Catalog AI Chat
-  const sendAskCatalogMessage = (userText: string) => {
+  const sendAskCatalogMessage = async (userText: string) => {
     const userMsg: AIMessage = {
       id: 'cat-' + Math.random().toString(36).substring(2, 7),
       sender: 'user',
@@ -769,47 +794,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAskCatalogMessages(prev => [...prev, userMsg]);
 
-    setTimeout(() => {
-      let reply = '';
-      let citations: AIMessage['sourceCitations'] = [];
-      const lower = userText.toLowerCase();
-
-      if (lower.includes('voltage') || lower.includes('415') || lower.includes('where')) {
-        reply = `The **415 V** specification is grounded in:\n\n1. **OEM Engineering Datasheet v2.0** (\`technical_spec_2026.pdf\`, Page 2, Sec 3.1: "Rated Operating Voltage 415V AC ±10% 50Hz 3-Phase").\n2. **SAP ERP Material Master Record** (\`MAT-77092-XYZ450\`, 415V).\n\nThe 440V listing on the web storefront was identified as a legacy template conflict and is pending resolution.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 2, snippet: '415V ±10% 50Hz 3-Phase Delta connection', verified: true },
-          { docName: 'motor_specs.pdf', page: 1, snippet: 'Standard 415V 50Hz electrical specification', verified: true }
-        ];
-      } else if (lower.includes('ip55') || lower.includes('protection') || lower.includes('ingress')) {
-        reply = `Products in your catalog certified for **IP55** (Dust & Water Jet protection):\n\n• **XYZ-450** (Siemens 7.5 kW Motor - Cert: TUV-IND-2026-8841)\n• **W22-IE4-7.5** (WEG 7.5 kW Super Premium Motor - Cert: BR-2024-WEG-9912)\n• **CG-Apex 7.5kW** (Crompton Greaves 7.5 kW Motor)`;
-        citations = [
-          { docName: 'certificate.pdf', page: 1, snippet: 'IP55 Enclosure protection test compliance IEC 60529', verified: true }
-        ];
-      } else if (lower.includes('version') || lower.includes('v1') || lower.includes('v2')) {
-        reply = `**Revisions between v1.4 and v2.0 for XYZ-450**:\n\n• Power: 5.5 kW → 7.5 kW (Source: \`technical_spec_2026.pdf\`, Page 1)\n• Speed: 1440 RPM → 1460 RPM (Source: \`technical_spec_2026.pdf\`, Page 2)\n• Weight: 42 kg → 45 kg (Source: \`technical_spec_2026.pdf\`, Page 4)\n• Voltage: 415 V (Unchanged across versions)`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Table 1: Mechanical and Electrical Revision Comparison', verified: true }
-        ];
-      } else {
-        reply = `Retrieved verified catalog information from indexed datasheets and conformity certificates. Zero external hallucinations allowed.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Indexed document reference', verified: true }
-        ];
-      }
+    try {
+      const response = await api.askCatalog(userText);
 
       const botMsg: AIMessage = {
         id: 'cat-' + Math.random().toString(36).substring(2, 7),
         sender: 'assistant',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: reply,
-        routedModule: 'Catalog Exploration',
-        confidence: 0.99,
-        sourceCitations: citations
+        text: response.text,
+        confidence: response.confidence,
+        sourceCitations: response.sourceCitations,
+        isMissingDataDemonstration: response.isMissingDataDemonstration,
+        actionCard: response.actionCard,
+        comparisonTable: response.comparisonTable
       };
 
       setAskCatalogMessages(prev => [...prev, botMsg]);
-    }, 600);
+    } catch (error) {
+      console.error("Ask Catalog API error:", error);
+      const errorMsg: AIMessage = {
+        id: 'cat-' + Math.random().toString(36).substring(2, 7),
+        sender: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: "I'm sorry, I encountered an error while processing your request. Please try again.",
+        confidence: 0.0,
+        isMissingDataDemonstration: true
+      };
+      setAskCatalogMessages(prev => [...prev, errorMsg]);
+    }
   };
+
+
 
   return (
     <AppContext.Provider
