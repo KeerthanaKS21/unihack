@@ -8,6 +8,7 @@ from app.utils.file_storage import save_uploaded_file
 from app.schemas.document import DocumentUploadResponse, DocumentResponse
 
 from app.services.pdf_processor import PDFProcessor
+from app.services.tabular_processor import TabularProcessor
 
 class DocumentService:
     @staticmethod
@@ -19,16 +20,27 @@ class DocumentService:
     ) -> DocumentUploadResponse:
         # Save file to uploads directory and get metadata
         file_meta = await save_uploaded_file(file)
+        lower_fname = file_meta["original_file_name"].lower()
 
-        # Process PDF if applicable
+        # Process document based on format
         extracted_data = {}
-        if file_meta["original_file_name"].lower().endswith(".pdf"):
+        if lower_fname.endswith(".pdf"):
             try:
                 extracted_data = PDFProcessor.extract_pdf_content(file_meta["file_path"])
             except Exception as pdf_err:
                 extracted_data = {
                     "pages_count": 1,
                     "extracted_summary": f"PDF stored. Extraction note: {pdf_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".xlsx", ".xls", ".csv")):
+            try:
+                extracted_data = TabularProcessor.extract_tabular_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as tab_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Spreadsheet stored. Extraction note: {tab_err}",
                     "extracted_attributes": {},
                     "source_citations": []
                 }
