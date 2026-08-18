@@ -1,0 +1,53 @@
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
+from sqlalchemy.orm import Session
+from typing import Optional
+from app.db.database import get_db
+from app.services.document_service import DocumentService
+from app.schemas.document import DocumentUploadResponse, DocumentListResponse, DocumentResponse
+
+router = APIRouter(prefix="/documents", tags=["Documents"])
+
+@router.post("/upload", response_model=DocumentUploadResponse, summary="Upload and store an industrial document")
+async def upload_document(
+    file: UploadFile = File(..., description="Multipart file upload (PDF, Excel, Images, CAD)"),
+    product_id: Optional[int] = Form(None, description="Optional associated product ID"),
+    uploaded_by: Optional[str] = Form("System / Engineering Lead", description="Uploader name/role"),
+    db: Session = Depends(get_db)
+):
+    """
+    1. Accepts multipart file upload.
+    2. Validates allowed file extensions and maximum size limit.
+    3. Computes SHA-256 content hash to prevent duplicate corruption.
+    4. Generates a safe server-side filename and stores file in `uploads/`.
+    5. Creates a document database record.
+    6. Returns structured document metadata.
+    """
+    return await DocumentService.upload_document(db, file, product_id, uploaded_by)
+
+@router.get("", response_model=DocumentListResponse, summary="List uploaded documents with pagination and filtering")
+def list_documents(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    search: Optional[str] = Query(None, description="Search term for filename or uploader"),
+    document_type: Optional[str] = Query(None, description="Filter by document type (DATASHEET, CERTIFICATE, etc.)"),
+    processing_status: Optional[str] = Query(None, description="Filter by status (UPLOADED, PROCESSING, PROCESSED)"),
+    product_id: Optional[int] = Query(None, description="Filter by product ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Powers the Upload History table in the frontend.
+    """
+    items, total = DocumentService.get_documents(
+        db=db,
+        page=page,
+        limit=limit,
+        search=search,
+        document_type=document_type,
+        processing_status=processing_status,
+        product_id=product_id
+    )
+    return DocumentListResponse(total=total, page=page, limit=limit, items=items)
+
+@router.get("/{id}", response_model=DocumentResponse, summary="Get document metadata by ID")
+def get_document(id: int, db: Session = Depends(get_db)):
+    return DocumentService.get_document_by_id(db, id)

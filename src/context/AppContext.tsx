@@ -24,6 +24,7 @@ import { mockCompatibilityChecks } from '@/mock/compatibility';
 import { mockSupplierOffers } from '@/mock/suppliers';
 import { initialQuotations } from '@/mock/quotes';
 import { initialSalesChatMessages, initialAskCatalogMessages } from '@/mock/aiChat';
+import { api } from '@/lib/api';
 
 export interface ToastNotification {
   id: string;
@@ -175,6 +176,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [unreviewedImpactsCount, syncStatus]);
 
+  // Load initial backend data asynchronously if API is reachable
+  useEffect(() => {
+    const loadBackendData = async () => {
+      try {
+        const health = await api.getCatalogHealth();
+        if (health) {
+          setCatalogHealth(prev => ({
+            ...prev,
+            overallHealthScore: health.overall_health || prev.overallHealthScore,
+            totalProducts: health.total_products || prev.totalProducts,
+            completeProducts: health.complete_products || prev.completeProducts,
+            conflictsCount: health.conflicts || prev.conflictsCount,
+            missingDataCount: health.missing_data || prev.missingDataCount,
+            duplicatesCount: health.duplicates || prev.duplicatesCount,
+            outdatedProductsCount: health.outdated || prev.outdatedProductsCount,
+            complianceIssuesCount: health.compliance_issues || prev.complianceIssuesCount,
+          }));
+        }
+      } catch {
+        // Backend offline or starting up, keep local mock state
+      }
+    };
+    loadBackendData();
+  }, []);
+
   // Toast Helper
   const showToast = (toast: Omit<ToastNotification, 'id'>) => {
     const id = 'toast-' + Math.random().toString(36).substring(2, 9);
@@ -287,6 +313,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Change Impact Review
   const toggleImpactReviewed = (impactId: string) => {
+    // Extract numerical ID if present (e.g. "imp-001" -> 1)
+    const numMatch = impactId.match(/\d+/);
+    const numId = numMatch ? parseInt(numMatch[0], 10) : 1;
+
     setChangeImpacts(prev => prev.map(imp => {
       if (imp.id === impactId) {
         const nextState = !imp.reviewed;
@@ -297,6 +327,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             message: `Marked "${imp.title}" as reviewed.`
           });
         }
+
+        // Call backend API
+        api.reviewChangeImpact(numId, nextState).catch(() => {});
+
         return {
           ...imp,
           reviewed: nextState,
@@ -309,12 +343,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const markAllImpactsReviewed = () => {
-    setChangeImpacts(prev => prev.map(imp => ({
-      ...imp,
-      reviewed: true,
-      reviewedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      reviewedBy: 'Current User (Engineer)'
-    })));
+    setChangeImpacts(prev => prev.map((imp, idx) => {
+      api.reviewChangeImpact(idx + 1, true).catch(() => {});
+      return {
+        ...imp,
+        reviewed: true,
+        reviewedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        reviewedBy: 'Current User (Engineer)'
+      };
+    }));
     showToast({
       type: 'success',
       title: 'All Impacts Reviewed',
@@ -361,6 +398,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Resolve Catalog Issue
   const resolveCatalogIssue = (issueId: string, resolvedValue: string, note?: string) => {
+    const numMatch = issueId.match(/\d+/);
+    const numId = numMatch ? parseInt(numMatch[0], 10) : 1;
+
+    // Call backend API
+    api.resolveCatalogIssue(numId, resolvedValue, note).catch(() => {});
+
     setCatalogIssues(prev => prev.map(iss => {
       if (iss.id === issueId) {
         return {
