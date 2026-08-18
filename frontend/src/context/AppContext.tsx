@@ -198,21 +198,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // 2. Change Impacts from DB
         const impacts = await api.getChangeImpacts().catch(() => null);
-        if (impacts && Array.isArray(impacts) && impacts.length > 0) {
-          setChangeImpacts(prev => prev.map(imp => {
-            const numMatch = imp.id.match(/\d+/);
-            const numId = numMatch ? parseInt(numMatch[0], 10) : null;
-            const dbImp = numId ? impacts.find(i => i.id === numId) : null;
-            if (dbImp) {
-              return {
-                ...imp,
-                reviewed: dbImp.reviewed,
-                reviewedAt: dbImp.reviewed_at ? new Date(dbImp.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : imp.reviewedAt,
-                reviewedBy: dbImp.reviewed_by || imp.reviewedBy,
-              };
-            }
-            return imp;
-          }));
+        if (impacts && Array.isArray(impacts)) {
+          setChangeImpacts(impacts.map((i: any) => ({
+            id: `imp-${i.id}`,
+            productId: `prod-${i.product_id || 'vtx-550'}`,
+            productName: i.product_name || 'Industrial Equipment',
+            changeDescription: i.change_description || '',
+            domain: (i.domain || i.impact_type || 'Operations') as any,
+            title: i.title,
+            explanation: i.description,
+            contextEvidence: i.context_evidence || 'Traceable from uploaded engineering revision.',
+            severity: (i.severity || 'medium') as any,
+            reviewed: Boolean(i.reviewed),
+            reviewedAt: i.reviewed_at ? new Date(i.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+            reviewedBy: i.reviewed_by,
+            targetModuleUrl: i.target_module_url || '/compatibility'
+          })));
+        }
+
+        // 2b. Changes from DB
+        const changes = await api.getChanges().catch(() => null);
+        if (changes && Array.isArray(changes)) {
+          setProductChanges(changes.map((c: any) => ({
+            id: `chg-${c.id}`,
+            productId: `prod-${c.product_id}`,
+            productName: c.product_name,
+            attribute: c.attribute_name,
+            oldValue: c.old_value || '-',
+            newValue: c.new_value,
+            detectedAt: c.detected_at || 'Just now',
+            sourceDocument: c.source_document || 'Uploaded document',
+            confidence: c.confidence || 0.98,
+            status: (c.status || 'pending').toLowerCase() as any
+          })));
         }
 
         // 3. Catalog Issues from DB
