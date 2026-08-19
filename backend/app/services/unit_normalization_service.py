@@ -1,19 +1,18 @@
 import logging
 import re
 from typing import Dict, Any, List, Optional, Union
-import pint
-
-logger = logging.getLogger("unit_normalization_service")
-
-# Initialize Pint Unit Registry
-ureg = pint.UnitRegistry()
-# Define industrial synonyms if needed
 try:
-    ureg.define('RPM = 1 * revolution / minute')
-    ureg.define('rpm = 1 * RPM')
-    ureg.define('r_min = 1 * RPM')
+    import pint
+    ureg = pint.UnitRegistry()
+    try:
+        ureg.define('RPM = 1 * revolution / minute')
+        ureg.define('rpm = 1 * RPM')
+        ureg.define('r_min = 1 * RPM')
+    except Exception:
+        pass
 except Exception:
-    pass
+    pint = None
+    ureg = None
 
 class UnitNormalizationService:
     """
@@ -132,7 +131,7 @@ class UnitNormalizationService:
             clean_raw_u = (raw_unit or "").lower().strip()
             source_pint_unit = unit_map.get(clean_raw_u)
 
-            if source_pint_unit:
+            if source_pint_unit and ureg:
                 try:
                     qty = raw_val * ureg(source_pint_unit)
                     converted = qty.to(pint_unit_name)

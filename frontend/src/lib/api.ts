@@ -259,6 +259,10 @@ export const api = {
     phone?: string;
     referenceNumber?: string;
     requirementText: string;
+    document_id?: number;
+    documentId?: number;
+    product_id?: number;
+    productId?: number;
   }) =>
     request<any>('/quotes/match', {
       method: 'POST',

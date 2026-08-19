@@ -130,6 +130,27 @@ export default function QuotesPage() {
     });
   };
 
+  // 1b. Available Datasheets from Upload & Ingest
+  const [availableDatasheets, setAvailableDatasheets] = useState<any[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState<number | undefined>(undefined);
+
+  // Load uploaded datasheets from database
+  React.useEffect(() => {
+    const loadDatasheets = async () => {
+      try {
+        const res = await api.getDocuments({ limit: 100 });
+        if (res && Array.isArray(res.items) && res.items.length > 0) {
+          const docs = [...res.items].sort((a, b) => (b.id || 0) - (a.id || 0));
+          setAvailableDatasheets(docs);
+          setSelectedDocId(docs[0]?.id);
+        }
+      } catch (err) {
+        console.warn('Could not load datasheets list from backend:', err);
+      }
+    };
+    loadDatasheets();
+  }, []);
+
   // Real Sourcing Match logic Grounded on Uploaded Datasheets & Database
   const handleGenerateQuote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +176,8 @@ export default function QuotesPage() {
         email,
         phone,
         referenceNumber,
-        requirementText: naturalRequirement
+        requirementText: naturalRequirement,
+        document_id: selectedDocId
       });
 
       if (result.processLogs && result.processLogs.length > 0) {
@@ -509,6 +531,32 @@ export default function QuotesPage() {
             </div>
 
             <form onSubmit={handleGenerateQuote} className="space-y-4">
+              {/* Source Datasheet Selector from Upload & Ingest */}
+              {availableDatasheets.length > 0 && (
+                <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 rounded bg-blue-100 text-blue-700">
+                      <FileText className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-800">Source Datasheet (Upload & Ingest):</span>
+                      <p className="text-[10px] text-slate-500">Quotation will strictly use specifications from the selected document.</p>
+                    </div>
+                  </div>
+                  <select
+                    value={selectedDocId || ''}
+                    onChange={e => setSelectedDocId(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                    className="px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-slate-900 font-mono text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                  >
+                    {availableDatasheets.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.original_file_name || d.file_name} (Doc #{d.id} - {d.version_detected || 'v1.0'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Customer Details Form */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                 <div>

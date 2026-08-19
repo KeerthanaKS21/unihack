@@ -69,6 +69,10 @@ class QuoteMatchRequest(BaseModel):
     phone: Optional[str] = "+91 22 2540 8899"
     referenceNumber: Optional[str] = "RFQ-2026-004"
     requirementText: str
+    document_id: Optional[int] = None
+    documentId: Optional[int] = None
+    product_id: Optional[int] = None
+    productId: Optional[int] = None
 
 class ParsedRequirement(BaseModel):
     product: str

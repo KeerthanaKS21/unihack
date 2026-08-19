@@ -572,6 +572,10 @@ class VersionDetectionService:
                             "target_module_url": existing_imp.target_module_url
                         })
 
+        doc.version_detected = candidate_v_label if version_status == "NEW_VERSION" else existing_v_label
+        db.commit()
+        db.refresh(doc)
+
         return {
             "document_id": document_id,
             "product_id": product.id,

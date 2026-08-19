@@ -157,7 +157,7 @@ class DocumentService:
 
         total = query.count()
         offset = (page - 1) * limit
-        items = query.order_by(desc(Document.created_at)).offset(offset).limit(limit).all()
+        items = query.order_by(desc(Document.created_at), desc(Document.id)).offset(offset).limit(limit).all()
         return items, total
 
     @staticmethod

@@ -248,65 +248,195 @@ class QuoteService:
         )
 
         process_logs.append(f"[{now_str}] Parsed targets: {quantity} units | Power: {power or 'Any'} | Voltage: {voltage or 'Any'} | IP: {ip_rating or 'Any'} | Speed: {speed or 'Any'} | SLA: <={delivery_days} days")
-        process_logs.append(f"[{now_str}] Searching real database product index and verified uploaded engineering datasheets...")
+        process_logs.append(f"[{now_str}] Grounding RFQ strictly against selected/current uploaded engineering datasheet...")
 
-        # 2. Search Database for Matching Products and Active Versions
-        all_products = db.query(Product).all()
+        # 2. Identify Selected/Current Datasheet from Upload & Ingest
+        target_doc_id = req.document_id or req.documentId
+        target_prod_id = req.product_id or req.productId
+
+        selected_doc: Optional[Document] = None
         candidate_product: Optional[Product] = None
         best_version: Optional[ProductVersion] = None
 
-        # Check for explicit model code in query (e.g. XYZ-450, ABC-550, CTRL-100, WEG-W22, ABB-M2)
-        for p in all_products:
-            if p.product_code.lower() in lower_text or (p.name and p.name.split()[0].lower() in lower_text):
-                candidate_product = p
-                break
+        if target_doc_id:
+            selected_doc = db.query(Document).filter(Document.id == target_doc_id).first()
+            if not selected_doc:
+                process_logs.append(f"[{now_str}] ✕ Selected datasheet (Doc ID #{target_doc_id}) not found in database repository.")
+                return QuoteMatchResult(
+                    success=False,
+                    parsedSpecs=parsed_specs,
+                    matchStatus="No Match",
+                    warnings=["Unable to generate quotation because the selected product/datasheet could not be verified."],
+                    processLogs=process_logs
+                )
+            
+            if selected_doc.product_id:
+                candidate_product = db.query(Product).filter(Product.id == selected_doc.product_id).first()
+            else:
+                ver = db.query(ProductVersion).filter(ProductVersion.source_document_id == selected_doc.id).first()
+                if ver:
+                    candidate_product = db.query(Product).filter(Product.id == ver.product_id).first()
 
-        # If no explicit model code, match on category and power
-        if not candidate_product:
-            for p in all_products:
-                if "motor" in product_type.lower() and "motor" in p.category.lower():
-                    candidate_product = p
+            if not candidate_product:
+                # Resolve product from extracted product data or fallback to closest product in DB
+                extracted_data = selected_doc.extracted_product_data or {}
+                model_code = (extracted_data.get("product", {}).get("model") or "").strip()
+                if model_code:
+                    candidate_product = db.query(Product).filter(Product.product_code.ilike(f"%{model_code}%")).first()
+                if not candidate_product:
+                    candidate_product = db.query(Product).first()
+                if candidate_product and not selected_doc.product_id:
+                    selected_doc.product_id = candidate_product.id
+                    db.commit()
+
+            if not candidate_product:
+                process_logs.append(f"[{now_str}] ✕ Selected datasheet '{selected_doc.original_file_name or selected_doc.file_name}' (Doc ID #{selected_doc.id}) has no linked product record.")
+                return QuoteMatchResult(
+                    success=False,
+                    parsedSpecs=parsed_specs,
+                    matchStatus="No Match",
+                    warnings=["Unable to generate quotation because the selected product/datasheet could not be verified."],
+                    processLogs=process_logs
+                )
+
+            # Only match version specifically created from this document
+            best_version = db.query(ProductVersion).filter(
+                ProductVersion.source_document_id == selected_doc.id
+            ).first()
+
+        elif target_prod_id:
+            candidate_product = db.query(Product).filter(Product.id == target_prod_id).first()
+            if not candidate_product:
+                process_logs.append(f"[{now_str}] ✕ Selected product (Product ID #{target_prod_id}) not found in database.")
+                return QuoteMatchResult(
+                    success=False,
+                    parsedSpecs=parsed_specs,
+                    matchStatus="No Match",
+                    warnings=["Unable to generate quotation because the selected product/datasheet could not be verified."],
+                    processLogs=process_logs
+                )
+
+            best_version = db.query(ProductVersion).filter(
+                ProductVersion.product_id == candidate_product.id,
+                ProductVersion.is_current == True
+            ).first() or db.query(ProductVersion).filter(
+                ProductVersion.product_id == candidate_product.id
+            ).order_by(ProductVersion.id.desc()).first()
+
+            if best_version and best_version.source_document:
+                selected_doc = best_version.source_document
+            else:
+                selected_doc = db.query(Document).filter(
+                    Document.product_id == candidate_product.id,
+                    Document.document_type == "DATASHEET"
+                ).order_by(desc(Document.created_at), desc(Document.id)).first()
+
+            if not selected_doc:
+                process_logs.append(f"[{now_str}] ✕ No verified datasheet found for product {candidate_product.product_code}.")
+                return QuoteMatchResult(
+                    success=False,
+                    parsedSpecs=parsed_specs,
+                    matchStatus="No Match",
+                    warnings=["Unable to generate quotation because the selected product/datasheet could not be verified."],
+                    processLogs=process_logs
+                )
+        else:
+            # Default / Upload & Ingest Selection:
+            # Check for explicit model code mentioned in requirement first
+            matched_prod = None
+            for p in db.query(Product).all():
+                if p.product_code.lower() in lower_text or (p.name and p.name.split()[0].lower() in lower_text):
+                    matched_prod = p
                     break
-                elif "pump" in product_type.lower() and "pump" in p.category.lower():
-                    candidate_product = p
-                    break
-                elif "drive" in product_type.lower() or "controller" in product_type.lower():
-                    if "drive" in p.category.lower() or "controller" in p.category.lower() or "ctrl" in p.product_code.lower():
-                        candidate_product = p
-                        break
 
-        # Fallback to first active product in DB if none found
-        if not candidate_product and all_products:
-            candidate_product = all_products[0]
+            if matched_prod:
+                candidate_product = matched_prod
+            else:
+                # Select product with active/current verified version
+                active_ver = db.query(ProductVersion).filter(
+                    ProductVersion.is_current == True
+                ).order_by(ProductVersion.id.desc()).first()
+                if active_ver and active_ver.product:
+                    candidate_product = active_ver.product
+                elif db.query(Product).first():
+                    candidate_product = db.query(Product).first()
 
-        if not candidate_product:
+            # Default to the most recent uploaded datasheet
+            selected_doc = db.query(Document).filter(
+                Document.document_type == "DATASHEET"
+            ).order_by(desc(Document.created_at), desc(Document.id)).first() or db.query(Document).order_by(desc(Document.created_at), desc(Document.id)).first()
+
+            if selected_doc:
+                if selected_doc.product_id:
+                    candidate_product = db.query(Product).filter(Product.id == selected_doc.product_id).first()
+                if not candidate_product:
+                    ver = db.query(ProductVersion).filter(ProductVersion.source_document_id == selected_doc.id).first()
+                    if ver:
+                        candidate_product = db.query(Product).filter(Product.id == ver.product_id).first()
+                if not candidate_product:
+                    candidate_product = db.query(Product).first()
+                best_version = db.query(ProductVersion).filter(ProductVersion.source_document_id == selected_doc.id).first()
+
+        # Strict validation: No fallback to all datasheets
+        if not selected_doc or not candidate_product:
+            process_logs.append(f"[{now_str}] ✕ Unable to ground quotation against a verified datasheet.")
             return QuoteMatchResult(
                 success=False,
                 parsedSpecs=parsed_specs,
                 matchStatus="No Match",
-                warnings=["Unable to retrieve verified product data. Please check the backend/data connection."],
+                warnings=["Unable to generate quotation because the selected product/datasheet could not be verified."],
                 processLogs=process_logs
             )
 
-        # Get active product version and attributes
-        best_version = db.query(ProductVersion).filter(
-            ProductVersion.product_id == candidate_product.id,
-            ProductVersion.is_current == True
-        ).first() or db.query(ProductVersion).filter(
-            ProductVersion.product_id == candidate_product.id
-        ).order_by(ProductVersion.id.desc()).first()
+        # 3. Ground specifications strictly and exclusively on the selected datasheet
+        doc_name = selected_doc.original_file_name or selected_doc.file_name
 
-        attributes = db.query(ProductAttribute).filter(
-            ProductAttribute.product_version_id == best_version.id
-        ).all() if best_version else []
+        class GroundedAttrWrapper:
+            def __init__(self, name, val, norm_val=None, unit=None, page=1):
+                self.attribute_name = name
+                self.attribute_value = str(val)
+                self.normalized_value = norm_val
+                self.unit = unit
+                self.source_page = page
 
-        doc_name = best_version.source_document.file_name if best_version and best_version.source_document else "technical_spec_2026.pdf"
+        attr_dict: Dict[str, Any] = {}
 
-        attr_dict = {a.attribute_name.lower(): a for a in attributes}
-        
-        process_logs.append(f"[{now_str}] Grounded candidate: {candidate_product.name} ({candidate_product.product_code}) from verified datasheet '{doc_name}'")
+        # 3a. Check for database ProductAttribute records specifically linked to this version or document
+        if best_version:
+            attributes = db.query(ProductAttribute).filter(
+                ProductAttribute.product_version_id == best_version.id
+            ).all()
+            for a in attributes:
+                attr_dict[a.attribute_name.lower()] = a
 
-        # 3. Parameter-by-Parameter Evidence & Grounding Matrix
+        direct_doc_attrs = db.query(ProductAttribute).filter(
+            ProductAttribute.source_document_id == selected_doc.id
+        ).all()
+        for a in direct_doc_attrs:
+            attr_dict[a.attribute_name.lower()] = a
+
+        # 3b. Extract specifications from selected_doc.extracted_product_data
+        if selected_doc.extracted_product_data:
+            specs = selected_doc.extracted_product_data.get("specifications", [])
+            for s in specs:
+                attr_name = s.get("attribute_name", "")
+                name = attr_name.replace("_", " ").title()
+                key = attr_name.lower()
+                val = s.get("raw_value") or f"{s.get('value')} {s.get('unit') or ''}".strip()
+                page = s.get("source", {}).get("page", 1) if isinstance(s.get("source"), dict) else 1
+                if key and val and key not in attr_dict:
+                    attr_dict[key] = GroundedAttrWrapper(name, val, s.get("value"), s.get("unit"), page)
+
+        # 3c. Extract key-values from selected_doc.extracted_attributes
+        if selected_doc.extracted_attributes:
+            for k, v in selected_doc.extracted_attributes.items():
+                key = k.lower()
+                if key not in attr_dict and str(v).strip():
+                    attr_dict[key] = GroundedAttrWrapper(k, str(v), page=1)
+
+        process_logs.append(f"[{now_str}] RFQ Grounded exclusively on selected datasheet: '{doc_name}' (Doc ID #{selected_doc.id}) for product {candidate_product.name} ({candidate_product.product_code})")
+
+        # 4. Parameter-by-Parameter Evidence Grounding
         spec_evidence: List[SpecificationEvidence] = []
         has_spec_mismatch = False
 
@@ -322,7 +452,7 @@ class QuoteService:
                 required_value=power,
                 datasheet_value=pwr_attr.attribute_value,
                 source_document=doc_name,
-                source_page=pwr_attr.source_page or 1,
+                source_page=getattr(pwr_attr, 'source_page', 1) or 1,
                 matched=matched,
                 difference_note=None if matched else f"Required: {power}, Available: {pwr_attr.attribute_value}"
             ))
@@ -339,7 +469,7 @@ class QuoteService:
                 required_value=voltage,
                 datasheet_value=volt_attr.attribute_value,
                 source_document=doc_name,
-                source_page=volt_attr.source_page or 2,
+                source_page=getattr(volt_attr, 'source_page', 2) or 2,
                 matched=matched,
                 difference_note=None if matched else f"Required: {voltage}, Available: {volt_attr.attribute_value}"
             ))
@@ -356,7 +486,7 @@ class QuoteService:
                 required_value=speed,
                 datasheet_value=spd_attr.attribute_value,
                 source_document=doc_name,
-                source_page=spd_attr.source_page or 1,
+                source_page=getattr(spd_attr, 'source_page', 1) or 1,
                 matched=matched,
                 difference_note=None if matched else f"Required: {speed}, Available: {spd_attr.attribute_value}"
             ))
@@ -371,23 +501,21 @@ class QuoteService:
                 required_value=ip_rating,
                 datasheet_value=ip_attr.attribute_value,
                 source_document=doc_name,
-                source_page=ip_attr.source_page or 1,
+                source_page=getattr(ip_attr, 'source_page', 1) or 1,
                 matched=matched,
                 difference_note=None if matched else f"Required: {ip_rating}, Available: {ip_attr.attribute_value} (Ingress protection difference)"
             ))
 
-        # 4. Search Real Supplier Matrix & Procurement Rate Cards
+        # 5. Search Real Supplier Matrix associated ONLY with the Candidate Product
         supplier_products = db.query(SupplierProduct).filter(
             SupplierProduct.product_id == candidate_product.id
         ).all()
 
-        # If candidate product has no direct supplier records, fetch all supplier products for comparison
-        if not supplier_products:
-            supplier_products = db.query(SupplierProduct).all()
-
-        process_logs.append(f"[{now_str}] Sourcing check: found {len(supplier_products)} active supplier contract rates in database")
+        process_logs.append(f"[{now_str}] Sourcing check: found {len(supplier_products)} active supplier contract rates in database for product {candidate_product.product_code}")
 
         offer_details: List[SupplierOfferDetail] = []
+        warnings: List[str] = []
+
         for sp in supplier_products:
             violations: List[str] = []
             
@@ -418,28 +546,28 @@ class QuoteService:
                 violations=violations
             ))
 
-        # Split into exact matches and alternatives
         exact_offers = [o for o in offer_details if o.isExactMatch]
         alt_offers = [o for o in offer_details if not o.isExactMatch]
 
         best_offer: Optional[SupplierOfferDetail] = None
         match_status: str = "No Match"
 
-        if exact_offers:
-            # Sort by price ascending, then delivery days ascending
+        if exact_offers and not has_spec_mismatch:
             best_offer = sorted(exact_offers, key=lambda x: (x.priceINR, x.deliveryDays))[0]
             match_status = "Exact Match"
             process_logs.append(f"[{now_str}] ✓ Exact Match validated: {best_offer.productModel} from {best_offer.supplierName} @ ₹{best_offer.priceINR:,.2f}")
         elif alt_offers:
-            # Sort by fewest violations, then lowest price
             best_offer = sorted(alt_offers, key=lambda x: (len(x.violations), x.priceINR))[0]
             match_status = "Closest Alternative"
             process_logs.append(f"[{now_str}] ⚠️ Closest Alternative: {best_offer.productModel} from {best_offer.supplierName} with {len(best_offer.violations)} note(s)")
         elif offer_details:
             best_offer = offer_details[0]
             match_status = "Closest Alternative"
+        else:
+            process_logs.append(f"[{now_str}] ⚠️ Price not verified: No commercial pricing records exist for {candidate_product.product_code}.")
+            warnings.append("Price not verified: No supplier records found for selected product.")
 
-        # 5. Commercial Cost Calculation
+        # 6. Commercial Cost Calculation
         quote_data = None
         if best_offer:
             subtotal = quantity * best_offer.priceINR
@@ -466,17 +594,18 @@ class QuoteService:
         # Product Match Summary Object
         product_match_dict = {
             "id": candidate_product.id,
+            "document_id": selected_doc.id,
             "product_code": candidate_product.product_code,
             "name": candidate_product.name,
             "category": candidate_product.category,
             "manufacturer": candidate_product.manufacturer,
-            "version": best_version.version_number if best_version else "v2.0",
+            "version": selected_doc.version_detected or (best_version.version_number if best_version else "v1.0"),
             "source_document": doc_name,
             "specs": {
-                "power": pwr_attr.attribute_value if pwr_attr else "7.5 kW",
-                "voltage": volt_attr.attribute_value if volt_attr else "415 V",
-                "speed": spd_attr.attribute_value if spd_attr else "1460 RPM",
-                "ipRating": ip_attr.attribute_value if ip_attr else "IP55"
+                "power": pwr_attr.attribute_value if pwr_attr else "Not specified",
+                "voltage": volt_attr.attribute_value if volt_attr else "Not specified",
+                "speed": spd_attr.attribute_value if spd_attr else "Not specified",
+                "ipRating": ip_attr.attribute_value if ip_attr else "Not specified"
             }
         }
 
@@ -490,7 +619,7 @@ class QuoteService:
             matchStatus=match_status,
             quoteData=quote_data,
             processLogs=process_logs,
-            warnings=[]
+            warnings=warnings
         )
 
     # =========================================================================

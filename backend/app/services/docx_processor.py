@@ -3,7 +3,10 @@ import re
 import logging
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-import docx
+try:
+    import docx
+except ImportError:
+    docx = None
 
 logger = logging.getLogger("docx_processor")
 
@@ -71,6 +74,8 @@ class DocxProcessor:
         text_stream_parts = []
 
         try:
+            if not docx:
+                raise RuntimeError("python-docx package is not installed.")
             doc = docx.Document(file_path)
             
             # 1. Process Paragraphs
