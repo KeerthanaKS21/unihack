@@ -32,3 +32,27 @@ class Document(Base):
     # Relationships
     product = relationship("Product", back_populates="documents")
     certificates = relationship("Certificate", back_populates="document")
+
+    @property
+    def is_ambiguous(self) -> bool:
+        import json
+        if self.processing_status == "REVIEW_REQUIRED" and self.extracted_summary:
+            try:
+                data = json.loads(self.extracted_summary)
+                return data.get("status") == "ambiguous"
+            except Exception:
+                return False
+        return False
+
+    @property
+    def possible_matches(self) -> list:
+        import json
+        if self.extracted_summary:
+            try:
+                data = json.loads(self.extracted_summary)
+                if isinstance(data, dict) and data.get("status") == "ambiguous":
+                    return data.get("possible_matches", [])
+            except Exception:
+                return []
+        return []
+

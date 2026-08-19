@@ -57,6 +57,10 @@ def list_documents(
 def get_document(id: int, db: Session = Depends(get_db)):
     return DocumentService.get_document_by_id(db, id)
 
+@router.post("/{id}/link-product", response_model=DocumentResponse, summary="Manually link an ambiguous document to a product")
+def link_document(id: int, product_id: int = Query(...), db: Session = Depends(get_db)):
+    return DocumentService.link_product_manually(db, id, product_id)
+
 @router.post("/{id}/extract-product", response_model=ProductExtractionResponse, summary="Extract standardized structured product intelligence using LLM")
 def extract_product_from_document(id: int, db: Session = Depends(get_db)):
     """

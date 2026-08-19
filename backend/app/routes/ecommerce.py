@@ -121,6 +121,36 @@ def sync_ecommerce(
         Change.product_id == product.id
     ).all()
 
+    # Find matching storefront product
+    # Identification: Match product_code against ID or Model case-insensitively
+    matching_ecom_products = []
+    for p in storefront_products:
+        p_id = str(p.get("id", "")).lower()
+        p_model = str(p.get("model", "")).lower()
+        target_code = product.product_code.lower()
+        if p_id == target_code or p_model == target_code:
+            matching_ecom_products.append(p)
+
+    if len(matching_ecom_products) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"E-commerce sync failed: ambiguous match on storefront for product code '{product.product_code}'."
+        )
+    elif len(matching_ecom_products) == 1:
+        matched_ecom_prod = matching_ecom_products[0]
+    else:
+        matched_ecom_prod = None
+
+    if not matched_ecom_prod:
+        # If not found directly, reject request
+        raise HTTPException(
+            status_code=404,
+            detail=f"Website update failed: product '{product.product_code}' could not be identified on storefront."
+        )
+
+    expected_version = matched_ecom_prod.get("version", 1)
+
+    # 5. Build updates dictionary dynamically (generic, works for any attribute)
     updates_dict = {}
     if changes:
         for c in changes:
