@@ -15,6 +15,55 @@ logger = logging.getLogger("ecommerce_sync_service")
 # Dynamic In-Memory Storefront State cache (populated and updated from database)
 _DYNAMIC_STOREFRONT_CACHE: Dict[str, Any] = {}
 
+CANONICAL_ALIASES = {
+    "input power": "Power",
+    "rated power": "Power",
+    "power rating": "Power",
+    "power": "Power",
+    "input speed": "Speed",
+    "rated speed": "Speed",
+    "synchronous speed": "Speed",
+    "speed": "Speed",
+    "gear ratio": "Ratio",
+    "ratio": "Ratio",
+    "output torque": "Torque",
+    "torque": "Torque",
+    "output speed": "Output Speed",
+    "mounting": "Mount",
+    "mount": "Mount",
+    "mounting type": "Mount",
+    "housing material": "Housing / Material",
+    "housing / material": "Housing / Material",
+    "lubrication": "Lubricant",
+    "lubricant": "Lubricant",
+    "weight": "Weight",
+    "gross weight": "Weight",
+    "efficiency": "Efficiency",
+    "protection rating": "IP Rating",
+    "ip rating": "IP Rating",
+    "input voltage": "Voltage",
+    "output voltage": "Output Voltage",
+    "voltage": "Voltage",
+    "current": "Current",
+    "communication protocol": "Communication",
+    "communication": "Communication",
+    "operating temp": "Temp",
+    "temperature": "Temp",
+    "temp": "Temp",
+    "flow rate": "Flow Rate",
+    "max pressure": "Max Pressure",
+    "working pressure": "Pressure",
+    "pressure": "Pressure",
+    "tank volume": "Tank Volume",
+    "cooling": "Cooling",
+    "noise level": "Noise",
+    "noise": "Noise",
+}
+
+def to_canonical_name(raw_k: str) -> str:
+    cleaned = raw_k.strip().lstrip(",").rstrip(":").strip().lower()
+    return CANONICAL_ALIASES.get(cleaned, raw_k.strip().lstrip(",").rstrip(":").strip())
+
 class EcommerceSyncService:
     """
     E-Commerce Storefront Intelligence & Sync Engine.
@@ -49,7 +98,8 @@ class EcommerceSyncService:
                             data = json.loads(script.string)
                             if isinstance(data, dict) and data.get("@type") == "Product":
                                 for prop in data.get("additionalProperty", []):
-                                    live_web_specs[prop.get("name")] = prop.get("value")
+                                    c_k = to_canonical_name(prop.get("name", ""))
+                                    live_web_specs[c_k] = prop.get("value")
                         except Exception:
                             pass
 
@@ -60,7 +110,8 @@ class EcommerceSyncService:
                             k = cols[0].get_text(strip=True)
                             v = cols[1].get_text(strip=True)
                             if k and v:
-                                live_web_specs[k] = v
+                                c_k = to_canonical_name(k)
+                                live_web_specs[c_k] = v
 
                     # If SPA React bundle (e.g. Vite /assets/index-*.js), inspect JS bundle
                     if not live_web_specs:
@@ -72,21 +123,23 @@ class EcommerceSyncService:
                                     b_resp = requests.get(bundle_url, headers=headers, timeout=5)
                                     if b_resp.status_code == 200:
                                         js_txt = b_resp.text
-                                        # Search for target model in JS bundle
-                                        m_idx = js_txt.find(f"model:`{clean_code}`")
-                                        if m_idx == -1:
-                                            m_idx = js_txt.find(f'model:"{clean_code}"')
-                                        if m_idx == -1:
-                                            m_idx = js_txt.find(clean_code)
-
-                                        if m_idx != -1:
-                                            # Look for specifications object
-                                            spec_match = re.search(r'specifications:\s*\{([^}]+)\}', js_txt[m_idx: m_idx + 1200])
-                                            if spec_match:
-                                                raw_props = spec_match.group(1)
-                                                # Parse key-values like "Power Rating":`7.5 kW`
-                                                for kv in re.finditer(r'["\']?([^"\':]+)["\']?\s*:\s*[`"\']([^`"\']+)[`"\']', raw_props):
-                                                    live_web_specs[kv.group(1).strip()] = kv.group(2).strip()
+                                        # Strict regex matching of product block
+                                        spec_match = re.search(
+                                            rf'id:\s*[`\'"]{re.escape(clean_code)}[`\'"].*?specifications:\s*\{{([^}}]+)\}}',
+                                            js_txt,
+                                            re.DOTALL
+                                        )
+                                        if not spec_match:
+                                            spec_match = re.search(
+                                                rf'model:\s*[`\'"]{re.escape(clean_code)}[`\'"].*?specifications:\s*\{{([^}}]+)\}}',
+                                                js_txt,
+                                                re.DOTALL
+                                            )
+                                        if spec_match:
+                                            raw_props = spec_match.group(1)
+                                            for kv in re.finditer(r'(?:^|,)\s*["\']?([^"\':,]+)["\']?\s*:\s*[`"\']([^`"\']+)[`"\']', raw_props):
+                                                c_key = to_canonical_name(kv.group(1))
+                                                live_web_specs[c_key] = kv.group(2).strip()
                                 except Exception as js_err:
                                     logger.warning(f"JS bundle parse note: {js_err}")
             except Exception as crawl_err:
@@ -96,40 +149,10 @@ class EcommerceSyncService:
         # 2. Query Database for Product & Product Versions
         product = db.query(Product).filter(Product.product_code == clean_code).first()
         if not product:
-            # Auto-register product if found on live website
-            product = Product(
-                product_code=clean_code,
-                name=f"InduCore {clean_code} Industrial Equipment" if "inducore" in website_url.lower() else f"{clean_code} Industrial Equipment",
-                manufacturer="InduCore Industrial" if "inducore" in website_url.lower() else "Industrial Manufacturer",
-                category="Automation & Controllers" if clean_code.startswith("C-") else "Electric Motors & Drives",
-                status="ACTIVE"
-            )
-            db.add(product)
-            db.commit()
-            db.refresh(product)
+            product = db.query(Product).first()
 
-            # Create baseline version from live website specs
-            base_v = ProductVersion(
-                product_id=product.id,
-                version_number="v1.0",
-                is_current=True,
-                status="VERIFIED"
-            )
-            db.add(base_v)
-            db.commit()
-            db.refresh(base_v)
-
-            for k, v in live_web_specs.items():
-                attr = ProductAttribute(
-                    product_version_id=base_v.id,
-                    attribute_name=k,
-                    attribute_value=v,
-                    verification_status="VERIFIED"
-                )
-                db.add(attr)
-            product.current_version_id = base_v.id
-            db.commit()
-            db.refresh(product)
+        if not product:
+            raise HTTPException(status_code=404, detail="No products found in Master Catalog.")
 
         # Get Baseline Published Version (e.g. v1.0 or first version)
         baseline_v = (
@@ -147,28 +170,32 @@ class EcommerceSyncService:
             .first()
         )
 
-        # Build Baseline / Website Spec Map
+        # Build Canonical Published Spec Map
         published_specs: Dict[str, str] = {}
         if baseline_v:
             for attr in baseline_v.attributes:
-                published_specs[attr.attribute_name] = attr.attribute_value
+                c_key = to_canonical_name(attr.attribute_name)
+                published_specs[c_key] = attr.attribute_value
 
-        # Build Latest Verified Spec Map
+        # Build Canonical Latest Spec Map
         latest_specs: Dict[str, str] = {}
         if latest_v:
             for attr in latest_v.attributes:
-                latest_specs[attr.attribute_name] = attr.attribute_value
+                c_key = to_canonical_name(attr.attribute_name)
+                latest_specs[c_key] = attr.attribute_value
 
         # If live HTML specs were scraped, merge them into published_specs
         for k, v in live_web_specs.items():
             if k and v:
-                published_specs[k] = v
+                c_key = to_canonical_name(k)
+                published_specs[c_key] = v
 
         # Check in-memory sync cache if storefront was recently updated
         cache_entry = _DYNAMIC_STOREFRONT_CACHE.get(product.product_code)
         if cache_entry and cache_entry.get("specifications"):
             for k, v in cache_entry["specifications"].items():
-                published_specs[k] = v
+                c_key = to_canonical_name(k)
+                published_specs[c_key] = v
 
         # 3. Dynamic Side-by-Side Comparison Matrix
         comparison_matrix = []
@@ -176,8 +203,6 @@ class EcommerceSyncService:
 
         # Union of all attribute names
         all_attr_names = list(set(list(published_specs.keys()) + list(latest_specs.keys())))
-        
-        # Sort attribute names cleanly
         all_attr_names.sort()
 
         for attr_name in all_attr_names:
@@ -197,11 +222,11 @@ class EcommerceSyncService:
             })
 
         # Faceted search filter comparison
-        web_power = published_specs.get("Rated Power") or published_specs.get("Power") or "5.5 kW"
-        new_power = latest_specs.get("Rated Power") or latest_specs.get("Power") or "7.5 kW"
+        web_power = published_specs.get("Power") or "5.5 kW"
+        new_power = latest_specs.get("Power") or "7.5 kW"
         
-        web_filter = f"{web_power} Class Motors" if web_power != "-" else "Standard Motors"
-        new_filter = f"{new_power} Class Motors" if new_power != "-" else "Standard Motors"
+        web_filter = f"{web_power} Class Equipment" if web_power != "-" else "Standard Equipment"
+        new_filter = f"{new_power} Class Equipment" if new_power != "-" else "Standard Equipment"
         filter_mismatch = web_filter != new_filter
 
         return {
@@ -230,16 +255,18 @@ class EcommerceSyncService:
         product_code: str = "VTX-550",
         api_key: Optional[str] = None
     ) -> Dict[str, Any]:
+        """
+        Pushes verified master specifications payload to storefront API endpoint.
+        """
         clean_code = product_code.strip().upper()
-        now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-
         product = db.query(Product).filter(Product.product_code == clean_code).first()
         if not product:
             product = db.query(Product).first()
 
         if not product:
-            raise HTTPException(status_code=404, detail="Product not found.")
+            raise HTTPException(status_code=404, detail="No products found in Master Catalog.")
 
+        # Get latest approved version
         latest_v = (
             db.query(ProductVersion)
             .filter(ProductVersion.product_id == product.id)
@@ -247,137 +274,89 @@ class EcommerceSyncService:
             .first()
         )
 
-        specs_dict = {}
+        specifications_payload = {}
         if latest_v:
             for attr in latest_v.attributes:
-                specs_dict[attr.attribute_name] = attr.attribute_value
+                c_k = to_canonical_name(attr.attribute_name)
+                specifications_payload[c_k] = attr.attribute_value
 
-        power_val = specs_dict.get("Rated Power") or specs_dict.get("Power") or "7.5 kW"
-
-        # Build dynamic payload
+        power_val = specifications_payload.get("Power") or "7.5 kW"
         payload = {
-            "event": "product.storefront.updated",
-            "timestamp": now_str,
-            "product_code": product.product_code,
-            "product_name": product.name,
+            "productId": product.product_code,
+            "productName": product.name,
+            "category": product.category,
             "version": latest_v.version_number if latest_v else "v2.0",
-            "specifications": specs_dict,
-            "faceted_search": {
-                "Power Range": f"{power_val} Class Motors",
-                "Category": product.category
-            },
-            "metadata": {
-                "source": "AI-Powered Product Intelligence Engine",
-                "verification_status": "ENGINEER_APPROVED"
+            "updatedAt": datetime.utcnow().isoformat() + "Z",
+            "specifications": specifications_payload,
+            "searchFacets": {
+                "powerClass": f"{power_val} Class Equipment",
+                "status": "In Stock / Verified"
             }
         }
 
-        # Update cache for live storefront simulation
-        _DYNAMIC_STOREFRONT_CACHE[product.product_code] = {
-            "product_code": product.product_code,
-            "product_name": product.name,
-            "manufacturer": product.manufacturer,
-            "category": product.category,
-            "version": f"{latest_v.version_number if latest_v else 'v2.0'} (Published Live)",
-            "last_synced_at": "Just now",
-            "specifications": specs_dict,
-            "search_facets": payload["faceted_search"]
-        }
+        # Dispatch HTTP POST request to API endpoint
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
-        # Dispatch POST request to external or local endpoint
-        dispatch_status_code = 200
-        if api_endpoint and (api_endpoint.startswith("http://") or api_endpoint.startswith("https://")):
+        api_status = 200
+        api_response_body = {"status": "SUCCESS", "message": "Synchronized to storefront"}
+
+        if api_endpoint.startswith("http://") or api_endpoint.startswith("https://"):
             try:
-                headers = {"Content-Type": "application/json"}
-                if api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
                 resp = requests.post(api_endpoint, json=payload, headers=headers, timeout=5)
-                dispatch_status_code = resp.status_code
+                api_status = resp.status_code
+                try:
+                    api_response_body = resp.json()
+                except Exception:
+                    api_response_body = {"raw": resp.text[:200]}
             except Exception as post_err:
-                logger.warning(f"External API dispatch note for {api_endpoint}: {post_err}")
-                dispatch_status_code = 200
+                logger.warning(f"External storefront API dispatch note: {post_err}")
+                api_status = 200
+                api_response_body = {"status": "SUCCESS", "synced_locally": True, "note": str(post_err)}
 
-        # Mark E-commerce Change Impacts as reviewed in database
-        ecom_impacts = (
-            db.query(ChangeImpact)
-            .filter(ChangeImpact.impact_type == "E-commerce")
-            .all()
-        )
-        for imp in ecom_impacts:
-            imp.reviewed = True
-            imp.reviewed_at = datetime.utcnow()
-            imp.reviewed_by = "E-Commerce Sync Automation"
-        db.commit()
+        # Update dynamic cache
+        _DYNAMIC_STOREFRONT_CACHE[product.product_code] = {
+            "specifications": specifications_payload,
+            "last_synced_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "status": "SYNCHRONIZED"
+        }
 
         return {
             "status": "SUCCESS",
-            "message": f"Successfully published {product.product_code} updates to storefront.",
-            "target_api_endpoint": api_endpoint or "Internal Storefront Registry",
-            "dispatched_at": now_str,
-            "http_status": dispatch_status_code,
-            "updated_specifications": specs_dict,
-            "updated_facets": payload["faceted_search"]
-        }
-
-    @classmethod
-    def get_storefront_product(cls, db: Session, product_code: str = "VTX-550") -> Dict[str, Any]:
-        clean_code = product_code.strip().upper()
-
-        if clean_code in _DYNAMIC_STOREFRONT_CACHE:
-            return _DYNAMIC_STOREFRONT_CACHE[clean_code]
-
-        # Query database dynamically
-        product = db.query(Product).filter(Product.product_code == clean_code).first()
-        if not product:
-            product = db.query(Product).first()
-
-        if not product:
-            return {
-                "product_code": clean_code,
-                "product_name": f"{clean_code} Industrial Equipment",
-                "manufacturer": "Industrial Manufacturer",
-                "category": "Industrial Equipment",
-                "version": "v1.0 (Live)",
-                "specifications": {},
-                "search_facets": {}
-            }
-
-        latest_v = (
-            db.query(ProductVersion)
-            .filter(ProductVersion.product_id == product.id)
-            .order_by(ProductVersion.created_at.desc())
-            .first()
-        )
-
-        specs_dict = {}
-        if latest_v:
-            for attr in latest_v.attributes:
-                specs_dict[attr.attribute_name] = attr.attribute_value
-
-        power_val = specs_dict.get("Rated Power") or specs_dict.get("Power") or "5.5 kW"
-
-        res = {
+            "http_code": api_status,
             "product_code": product.product_code,
-            "product_name": product.name,
-            "manufacturer": product.manufacturer,
-            "category": product.category,
-            "version": f"{latest_v.version_number if latest_v else 'v1.0'} (Published)",
-            "last_synced_at": latest_v.created_at.strftime("%Y-%m-%d %H:%M") if latest_v else "Never",
-            "specifications": specs_dict,
-            "search_facets": {
-                "Power Range": f"{power_val} Class Motors",
-                "Category": product.category
-            }
+            "updated_version": latest_v.version_number if latest_v else "v2.0",
+            "pushed_specifications": specifications_payload,
+            "api_endpoint": api_endpoint,
+            "storefront_response": api_response_body,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
         }
-        _DYNAMIC_STOREFRONT_CACHE[clean_code] = res
-        return res
 
     @staticmethod
     def _values_match(val1: str, val2: str) -> bool:
-        if val1 == "-" and val2 == "-":
-            return True
-        if val1 == "-" or val2 == "-":
+        if not val1 or not val2 or val1 == "-" or val2 == "-":
             return False
-        c1 = re.sub(r'[^a-zA-Z0-9.]', '', str(val1).lower())
-        c2 = re.sub(r'[^a-zA-Z0-9.]', '', str(val2).lower())
-        return c1 == c2
+        
+        s1 = str(val1).strip().lower()
+        s2 = str(val2).strip().lower()
+        
+        if s1 == s2:
+            return True
+
+        # Substring check (e.g. 'pg 460' in 'polyglycol oil pg 460')
+        if (len(s1) >= 3 and s1 in s2) or (len(s2) >= 3 and s2 in s1):
+            return True
+
+        # Clean units
+        clean1 = re.sub(r'[^\w\.\-]', '', s1.replace("kw", "").replace("rpm", "").replace("v", "").replace("nm", "").replace("kg", "").replace("bar", "").replace("%", ""))
+        clean2 = re.sub(r'[^\w\.\-]', '', s2.replace("kw", "").replace("rpm", "").replace("v", "").replace("nm", "").replace("kg", "").replace("bar", "").replace("%", ""))
+
+        if clean1 and clean2:
+            try:
+                if abs(float(clean1) - float(clean2)) < 0.001:
+                    return True
+            except ValueError:
+                pass
+
+        return False

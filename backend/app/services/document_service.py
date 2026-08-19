@@ -68,24 +68,11 @@ class DocumentService:
                     "source_citations": []
                 }
 
-        # Check if matched with existing product or guess from filename / extracted model
-        matched_product = None
-        if product_id:
-            matched_product = db.query(Product).filter(Product.id == product_id).first()
-        else:
-            fname = file_meta["original_file_name"].lower()
-            extracted_model = (extracted_data.get("extracted_attributes", {}).get("Model Identifier") or "").lower()
-            
-            if "xyz-450" in fname or "xyz450" in fname or "technical_spec" in fname or "xyz-450" in extracted_model:
-                matched_product = db.query(Product).filter(Product.product_code == "XYZ-450").first()
-            elif "abc-550" in fname or "pump" in fname or "abc-550" in extracted_model:
-                matched_product = db.query(Product).filter(Product.product_code == "ABC-550").first()
-            elif "ctrl-100" in fname or "controller" in fname or "ctrl-100" in extracted_model:
-                matched_product = db.query(Product).filter(Product.product_code == "CTRL-100").first()
-
         pages_count = extracted_data.get("pages_count", 1)
         extracted_summary = extracted_data.get("extracted_summary") or f"Ingested {file_meta['original_file_name']} with verified processing."
         extracted_attributes = extracted_data.get("extracted_attributes") or {}
+        if "sheets" in extracted_data:
+            extracted_attributes["sheets"] = extracted_data["sheets"]
         source_citations = extracted_data.get("source_citations") or []
 
         doc_record = Document(
@@ -97,11 +84,11 @@ class DocumentService:
             file_size_formatted=file_meta["file_size_formatted"],
             mime_type=file_meta["mime_type"],
             content_hash=file_meta["content_hash"],
-            product_id=matched_product.id if matched_product else None,
+            product_id=product_id,
             uploaded_by=uploaded_by,
             processing_status="PROCESSED",
-            version_detected="v2.0" if "2026" in file_meta["original_file_name"] else ("v1.4" if "old" in file_meta["original_file_name"] else None),
-            match_confidence=0.96 if matched_product else 1.0,
+            version_detected=None,
+            match_confidence=1.0 if product_id else None,
             pages_count=pages_count,
             extracted_summary=extracted_summary,
             extracted_attributes=extracted_attributes,

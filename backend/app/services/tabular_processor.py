@@ -81,8 +81,9 @@ class TabularProcessor:
                     # Detect Roles
                     detected_roles = TabularProcessor._detect_column_roles(clean_columns)
 
-                    # Preview up to 30 sample rows
+                    # Preview sample rows and preserve all rows
                     sample_records = df.head(30).fillna("").to_dict(orient="records")
+                    all_records = df.fillna("").to_dict(orient="records")
 
                     sheets_data.append({
                         "sheet_index": sheet_idx + 1,
@@ -90,7 +91,8 @@ class TabularProcessor:
                         "row_count": row_count,
                         "columns": clean_columns,
                         "detected_roles": detected_roles,
-                        "sample_rows": sample_records
+                        "sample_rows": sample_records,
+                        "all_rows": all_records
                     })
 
                     # Text stream for inspection
@@ -124,6 +126,7 @@ class TabularProcessor:
 
                 detected_roles = TabularProcessor._detect_column_roles(clean_columns)
                 sample_records = df.head(30).fillna("").to_dict(orient="records")
+                all_records = df.fillna("").to_dict(orient="records")
 
                 sheets_data.append({
                     "sheet_index": 1,
@@ -131,7 +134,8 @@ class TabularProcessor:
                     "row_count": row_count,
                     "columns": clean_columns,
                     "detected_roles": detected_roles,
-                    "sample_rows": sample_records
+                    "sample_rows": sample_records,
+                    "all_rows": all_records
                 })
 
                 csv_preview_text = f"=== CSV TABULAR DATA ({row_count} Rows) ===\nColumns: {', '.join(clean_columns)}\n\n"

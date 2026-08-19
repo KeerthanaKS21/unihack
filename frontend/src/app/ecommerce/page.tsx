@@ -26,27 +26,19 @@ import {
   Link as LinkIcon,
   KeyRound,
   PackageCheck,
-  Edit3
+  Edit3,
+  UploadCloud
 } from 'lucide-react';
 import Link from 'next/link';
 
-// Baseline Catalog Products
-const DEFAULT_CATALOG_PRODUCTS = [
-  { product_code: 'VTX-550', name: 'Nova VectorFlow VTX-550 Motor' },
-  { product_code: 'M-101', name: 'InduCore M-101 Motor (Spreadsheet Catalog)' },
-  { product_code: 'XYZ-450', name: 'Siemens XYZ-450 Industrial Motor' },
-  { product_code: 'ABC-550', name: 'Grundfos ABC-550 Centrifugal Pump' },
-  { product_code: 'CTRL-100', name: 'ABB CTRL-100 VFD Inverter Drive' }
-];
-
 export default function EcommerceUpdatePage() {
-  const { showToast, products } = useApp();
+  const { showToast } = useApp();
 
-  // Dynamic Products List from Database
-  const [productsList, setProductsList] = useState<any[]>(DEFAULT_CATALOG_PRODUCTS);
-  const [productCode, setProductCode] = useState('VTX-550');
-  const [websiteUrl, setWebsiteUrl] = useState('http://localhost:3000/storefront/vtx-550');
-  const [apiEndpoint, setApiEndpoint] = useState('http://localhost:8000/api/ecommerce/demo-update-receiver');
+  // Dynamic Products List from Database (Zero Mock Data)
+  const [productsList, setProductsList] = useState<any[]>([]);
+  const [productCode, setProductCode] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('https://inducore-website.vercel.app/');
+  const [apiEndpoint, setApiEndpoint] = useState('https://inducore-website.vercel.app/api/integration/product-update');
   const [apiKey, setApiKey] = useState('');
 
   // Live Inspection & Sync State
@@ -56,31 +48,33 @@ export default function EcommerceUpdatePage() {
   const [lastSyncResult, setLastSyncResult] = useState<any | null>(null);
   const [isStorefrontUpdated, setIsStorefrontUpdated] = useState(false);
 
-  // Fetch dynamic products from backend on mount
-  useEffect(() => {
-    api.getProducts({ limit: 50 })
-      .then(res => {
-        const items = Array.isArray(res) ? res : (res?.items || []);
-        if (items.length > 0) {
-          const merged = [...items];
-          for (const d of DEFAULT_CATALOG_PRODUCTS) {
-            if (!merged.some(m => m.product_code === d.product_code)) {
-              merged.push(d);
-            }
-          }
-          setProductsList(merged);
-        }
-      })
-      .catch(err => {
-        console.warn('Could not fetch products list from API:', err);
-      });
+  // Fetch dynamic products strictly from backend
+  const loadCatalogProducts = async () => {
+    try {
+      const res: any = await api.getProducts({ limit: 100 });
+      const items = Array.isArray(res) ? res : (res?.items || []);
+      setProductsList(items);
+      if (items.length > 0) {
+        const initialCode = items[0].product_code;
+        setProductCode(initialCode);
+        runInspection(initialCode, websiteUrl);
+      } else {
+        setProductCode('');
+        setInspectionData(null);
+      }
+    } catch (err) {
+      console.warn('Could not fetch products list from API:', err);
+      setProductsList([]);
+    }
+  };
 
-    // Run initial inspection
-    runInspection('VTX-550', 'http://localhost:3000/storefront/vtx-550');
+  useEffect(() => {
+    loadCatalogProducts();
   }, []);
 
   // Run live inspection against backend crawler
   const runInspection = async (pCode = productCode, wUrl = websiteUrl) => {
+    if (!pCode) return;
     setInspecting(true);
     try {
       const res = await fetch('http://localhost:8000/api/ecommerce/inspect-website', {
@@ -107,19 +101,13 @@ export default function EcommerceUpdatePage() {
     if (!code) return;
     const cleanCode = code.trim().toUpperCase();
     setProductCode(cleanCode);
-    
-    let nextUrl = websiteUrl;
-    if (websiteUrl.includes('localhost:3000/storefront') || !websiteUrl) {
-      nextUrl = `http://localhost:3000/storefront/${cleanCode.toLowerCase()}`;
-      setWebsiteUrl(nextUrl);
-    }
-
     setIsStorefrontUpdated(false);
-    runInspection(cleanCode, nextUrl);
+    runInspection(cleanCode, websiteUrl);
   };
 
   // Push verified update to website API endpoint
   const handlePushUpdate = async () => {
+    if (!productCode) return;
     setSyncing(true);
     try {
       const res = await fetch('http://localhost:8000/api/ecommerce/push-update', {
@@ -172,14 +160,15 @@ export default function EcommerceUpdatePage() {
         badgeVariant={isStorefrontUpdated ? 'success' : totalMismatches > 0 ? 'warning' : 'primary'}
         action={
           <div className="flex items-center gap-2.5">
-            <Link
-              href={`/storefront/${productCode.toLowerCase()}`}
+            <a
+              href={websiteUrl}
               target="_blank"
+              rel="noreferrer"
               className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 shadow-2xs transition-colors inline-flex items-center gap-1.5"
             >
               <ExternalLink className="w-4 h-4 text-slate-500" />
-              <span>Open Live Storefront ↗</span>
-            </Link>
+              <span>Open Live Website ↗</span>
+            </a>
 
             <Link
               href="/change-impact"
@@ -191,11 +180,11 @@ export default function EcommerceUpdatePage() {
 
             <button
               onClick={handlePushUpdate}
-              disabled={syncing}
+              disabled={syncing || !productCode}
               className={`px-5 py-2 text-xs font-bold rounded-lg shadow-sm transition-all inline-flex items-center gap-2 ${
                 isStorefrontUpdated
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-300'
               }`}
             >
               {syncing ? (
@@ -230,45 +219,57 @@ export default function EcommerceUpdatePage() {
               Active Catalog Target
             </span>
             <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2 mt-0.5">
-              <span>{inspectionData?.product_name || `${productCode} Industrial Equipment`}</span>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded border border-blue-200">
-                {productCode}
-              </span>
+              <span>{inspectionData?.product_name || (productCode ? `${productCode} Industrial Equipment` : 'No Catalog Products Loaded')}</span>
+              {productCode && (
+                <span className="text-xs font-mono font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded border border-blue-200">
+                  {productCode}
+                </span>
+              )}
             </h3>
           </div>
 
           {/* Clickable Product Tabs & Dropdown */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-slate-500 mr-1">Switch SKU:</span>
+            <span className="text-xs font-bold text-slate-500 mr-1">Switch Product:</span>
             
             {/* Quick-Switch Pill Buttons */}
-            {['VTX-550', 'M-101', 'XYZ-450', 'ABC-550'].map(code => (
+            {productsList.slice(0, 8).map(p => (
               <button
-                key={code}
+                key={p.id || p.product_code}
                 type="button"
-                onClick={() => handleSelectProduct(code)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer ${
-                  productCode === code
+                onClick={() => handleSelectProduct(p.product_code)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                  productCode === p.product_code
                     ? 'bg-blue-600 text-white ring-2 ring-blue-600/30'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
                 }`}
               >
-                {code}
+                {p.product_code}
               </button>
             ))}
 
             {/* Select Dropdown for all items */}
-            <select
-              value={productCode}
-              onChange={e => handleSelectProduct(e.target.value)}
-              className="text-xs font-bold px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            {productsList.length > 0 && (
+              <select
+                value={productCode}
+                onChange={e => handleSelectProduct(e.target.value)}
+                className="text-xs font-bold px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                {productsList.map((p, idx) => (
+                  <option key={p.id || idx} value={p.product_code}>
+                    {p.product_code} — {p.name || p.product_code}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <button
+              onClick={loadCatalogProducts}
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+              title="Refresh product list"
             >
-              {productsList.map((p, idx) => (
-                <option key={p.id || idx} value={p.product_code}>
-                  {p.product_code} — {p.name || p.product_code}
-                </option>
-              ))}
-            </select>
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
@@ -284,7 +285,7 @@ export default function EcommerceUpdatePage() {
               type="text"
               value={websiteUrl}
               onChange={e => setWebsiteUrl(e.target.value)}
-              placeholder="https://your-store.com/products/vtx-550"
+              placeholder="https://inducore-website.vercel.app/"
               className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -299,7 +300,7 @@ export default function EcommerceUpdatePage() {
               type="text"
               value={apiEndpoint}
               onChange={e => setApiEndpoint(e.target.value)}
-              placeholder="https://your-store.com/api/update-product"
+              placeholder="https://inducore-website.vercel.app/api/integration/product-update"
               className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -320,8 +321,8 @@ export default function EcommerceUpdatePage() {
               />
               <button
                 onClick={() => runInspection()}
-                disabled={inspecting}
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-xs transition-colors shrink-0 inline-flex items-center gap-1.5 cursor-pointer"
+                disabled={inspecting || !productCode}
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg shadow-xs transition-colors shrink-0 inline-flex items-center gap-1.5 cursor-pointer"
               >
                 {inspecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                 <span>Inspect</span>
@@ -330,6 +331,28 @@ export default function EcommerceUpdatePage() {
           </div>
         </div>
       </div>
+
+      {/* Zero Products Empty State */}
+      {productsList.length === 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+            <UploadCloud className="w-7 h-7" />
+          </div>
+          <div className="space-y-1 max-w-md mx-auto">
+            <h3 className="text-base font-bold text-slate-900">No Products in Master Catalog Yet</h3>
+            <p className="text-xs text-slate-500">
+              Upload your catalog spreadsheet (CSV or Excel) on the Document Upload page to ingest products and begin automated synchronization.
+            </p>
+          </div>
+          <Link
+            href="/upload"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span>Go to Document Upload →</span>
+          </Link>
+        </div>
+      )}
 
       {/* Success Notification Banner */}
       {isStorefrontUpdated && (
@@ -351,159 +374,161 @@ export default function EcommerceUpdatePage() {
       {/* ========================================================================= */}
       {/* 2. SIDE-BY-SIDE COMPARISON: LIVE WEBSITE vs NEW DATASHEET                 */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 tracking-tight">
-              Live Website Discrepancy Matrix: {productCode}
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Comparison between what is currently published on the website vs verified technical values from the uploaded datasheet.
-            </p>
+      {productsList.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                Live Website Discrepancy Matrix: {productCode}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Comparison between what is currently published on the website vs verified technical values from the uploaded datasheet.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded border ${
+                totalMismatches > 0 ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+              }`}>
+                {totalMismatches > 0 ? `${totalMismatches} Discrepancies Requiring Update` : '0 Discrepancies (Storefront In Sync)'}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-bold px-2.5 py-1 rounded border ${
-              totalMismatches > 0 ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-emerald-100 text-emerald-900 border-emerald-300'
-            }`}>
-              {totalMismatches > 0 ? `${totalMismatches} Discrepancies Requiring Update` : '0 Discrepancies (Storefront In Sync)'}
-            </span>
-          </div>
-        </div>
+          {/* Comparison Table */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="py-3 px-4 w-1/4">Specification Parameter</th>
+                  <th className="py-3 px-4 w-1/4 bg-slate-50 text-slate-500">
+                    Currently Live on Website ({inspectionData?.published_version || 'v1.0'})
+                  </th>
+                  <th className="py-3 px-4 w-1/4 bg-blue-50/80 text-blue-900 border-l border-r border-blue-100">
+                    Newly Ingested Datasheet ({inspectionData?.pending_version || 'v2.0'})
+                  </th>
+                  <th className="py-3 px-4 w-1/4">Status & Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {inspectionData?.comparison_matrix && inspectionData.comparison_matrix.length > 0 ? (
+                  inspectionData.comparison_matrix.map((row: any, idx: number) => {
+                    const isMismatch = row.status === 'MISMATCH';
+                    return (
+                      <tr
+                        key={idx}
+                        className={`transition-colors ${
+                          isMismatch ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/60'
+                        }`}
+                      >
+                        <td className="py-3.5 px-4 font-bold text-slate-800">
+                          {row.attribute_name}
+                        </td>
 
-        {/* Comparison Table */}
-        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-4 w-1/4">Specification Parameter</th>
-                <th className="py-3 px-4 w-1/4 bg-slate-50 text-slate-500">
-                  Currently Live on Website ({inspectionData?.published_version || 'v1.0'})
-                </th>
-                <th className="py-3 px-4 w-1/4 bg-blue-50/80 text-blue-900 border-l border-r border-blue-100">
-                  Newly Ingested Datasheet ({inspectionData?.pending_version || 'v2.0'})
-                </th>
-                <th className="py-3 px-4 w-1/4">Status & Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {inspectionData?.comparison_matrix && inspectionData.comparison_matrix.length > 0 ? (
-                inspectionData.comparison_matrix.map((row: any, idx: number) => {
-                  const isMismatch = row.status === 'MISMATCH';
-                  return (
-                    <tr
-                      key={idx}
-                      className={`transition-colors ${
-                        isMismatch ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/60'
-                      }`}
-                    >
-                      <td className="py-3.5 px-4 font-bold text-slate-800">
-                        {row.attribute_name}
-                      </td>
-
-                      {/* Published on Website */}
-                      <td className="py-3.5 px-4 font-mono text-slate-500 bg-slate-50/50">
-                        {isMismatch ? (
-                          <span className="line-through decoration-rose-500/60 decoration-2 text-slate-400">
-                            {row.website_value}
-                          </span>
-                        ) : (
-                          <span>{row.website_value}</span>
-                        )}
-                      </td>
-
-                      {/* New AI Datasheet Value */}
-                      <td className={`py-3.5 px-4 font-mono font-bold border-l border-r border-slate-100 ${
-                        isMismatch ? 'text-amber-900 bg-amber-100/40' : 'text-emerald-800 bg-emerald-50/30'
-                      }`}>
-                        <div className="flex items-center justify-between">
-                          <span>{row.new_catalog_value}</span>
+                        {/* Published on Website */}
+                        <td className="py-3.5 px-4 font-mono text-slate-500 bg-slate-50/50">
                           {isMismatch ? (
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 border border-amber-300">
-                              MISMATCH
+                            <span className="line-through decoration-rose-500/60 decoration-2 text-slate-400">
+                              {row.website_value}
                             </span>
                           ) : (
-                            <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                              MATCH
+                            <span>{row.website_value}</span>
+                          )}
+                        </td>
+
+                        {/* New AI Datasheet Value */}
+                        <td className={`py-3.5 px-4 font-mono font-bold border-l border-r border-slate-100 ${
+                          isMismatch ? 'text-amber-900 bg-amber-100/40' : 'text-emerald-800 bg-emerald-50/30'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <span>{row.new_catalog_value}</span>
+                            {isMismatch ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 border border-amber-300">
+                                MISMATCH
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                MATCH
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Action */}
+                        <td className="py-3.5 px-4">
+                          {isMismatch ? (
+                            <span className="text-amber-700 font-bold flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              <span>Update Storefront</span>
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" />
+                              <span>In Sync</span>
                             </span>
                           )}
-                        </div>
-                      </td>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-400">
+                      No specifications to compare. Inspect a live URL above.
+                    </td>
+                  </tr>
+                )}
 
-                      {/* Action */}
-                      <td className="py-3.5 px-4">
-                        {isMismatch ? (
-                          <span className="text-amber-700 font-bold flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            <span>Update Storefront</span>
-                          </span>
-                        ) : (
-                          <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" />
-                            <span>In Sync</span>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={4} className="py-8 text-center text-slate-400">
-                    No specifications to compare. Inspect a live URL above.
-                  </td>
-                </tr>
-              )}
-
-              {/* Faceted Filter Row */}
-              {inspectionData?.search_filter_comparison && (
-                <tr className="bg-slate-50/80 font-semibold text-xs border-t-2 border-slate-200">
-                  <td className="py-3.5 px-4 font-bold text-slate-900">
-                    Faceted Search Category Filter
-                  </td>
-                  <td className="py-3.5 px-4 font-mono text-slate-500 line-through">
-                    {inspectionData.search_filter_comparison.published_filter}
-                  </td>
-                  <td className="py-3.5 px-4 font-mono font-bold text-blue-900 bg-blue-50/70 border-l border-r border-blue-100">
-                    {inspectionData.search_filter_comparison.new_filter}
-                  </td>
-                  <td className="py-3.5 px-4 text-amber-700 font-bold">
-                    Shift Search Filter Facet
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Human Action Callout Bar */}
-        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <Lock className="w-4 h-4 text-slate-400" />
-            <span className="text-xs text-slate-600 font-medium">
-              Clicking <strong>Push Update to Website</strong> will send the verified JSON payload to your API endpoint and revalidate the live storefront cache.
-            </span>
+                {/* Faceted Filter Row */}
+                {inspectionData?.search_filter_comparison && (
+                  <tr className="bg-slate-50/80 font-semibold text-xs border-t-2 border-slate-200">
+                    <td className="py-3.5 px-4 font-bold text-slate-900">
+                      Faceted Search Category Filter
+                    </td>
+                    <td className="py-3.5 px-4 font-mono text-slate-500 line-through">
+                      {inspectionData.search_filter_comparison.published_filter}
+                    </td>
+                    <td className="py-3.5 px-4 font-mono font-bold text-blue-900 bg-blue-50/70 border-l border-r border-blue-100">
+                      {inspectionData.search_filter_comparison.new_filter}
+                    </td>
+                    <td className="py-3.5 px-4 text-amber-700 font-bold">
+                      Shift Search Filter Facet
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
-          <button
-            onClick={handlePushUpdate}
-            disabled={syncing}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-bold rounded-lg shadow-sm transition-all shrink-0 inline-flex items-center gap-2 cursor-pointer"
-          >
-            {syncing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Publishing Live...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                <span>Push Update to Website →</span>
-              </>
-            )}
-          </button>
+          {/* Human Action Callout Bar */}
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <Lock className="w-4 h-4 text-slate-400" />
+              <span className="text-xs text-slate-600 font-medium">
+                Clicking <strong>Push Update to Website</strong> will send the verified JSON payload to your API endpoint and revalidate the live storefront cache.
+              </span>
+            </div>
+
+            <button
+              onClick={handlePushUpdate}
+              disabled={syncing || !productCode}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-bold rounded-lg shadow-sm transition-all shrink-0 inline-flex items-center gap-2 cursor-pointer"
+            >
+              {syncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Publishing Live...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Push Update to Website →</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
