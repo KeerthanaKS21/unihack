@@ -43,65 +43,76 @@ interface InterpretedReq {
   constraints: Constraint[];
 }
 
+// Full category schemas with all attributes per category
+const CATEGORY_SCHEMAS: Record<string, any> = {
+  motor: {
+    label: 'Motor',
+    attributes: [
+      { name: 'power', label: 'Power', type: 'numeric', units: ['kW', 'W', 'HP'], default_unit: 'kW' },
+      { name: 'voltage', label: 'Voltage', type: 'numeric', units: ['V', 'kV'], default_unit: 'V' },
+      { name: 'ipRating', label: 'IP Rating', type: 'string', choices: ['IP54', 'IP55', 'IP56', 'IP65', 'IP66'], default_unit: '' },
+      { name: 'speed', label: 'Speed', type: 'numeric', units: ['RPM'], default_unit: 'RPM' }
+    ]
+  },
+  pump: {
+    label: 'Pump',
+    attributes: [
+      { name: 'flowRate', label: 'Flow Rate', type: 'numeric', units: ['L/min', 'm3/h'], default_unit: 'L/min' },
+      { name: 'pressure', label: 'Pressure', type: 'numeric', units: ['bar', 'psi'], default_unit: 'bar' },
+      { name: 'head', label: 'Head', type: 'numeric', units: ['m', 'ft'], default_unit: 'm' },
+      { name: 'material', label: 'Material', type: 'string', choices: ['SS304', 'SS316', 'Cast Iron', 'Bronze'], default_unit: '' },
+      { name: 'temperature', label: 'Max Temp', type: 'numeric', units: ['C', 'F'], default_unit: 'C' },
+      { name: 'efficiency', label: 'Efficiency', type: 'numeric', units: ['%'], default_unit: '%' }
+    ]
+  },
+  valve: {
+    label: 'Valve',
+    attributes: [
+      { name: 'size', label: 'Nominal Size', type: 'string', choices: ['DN15', 'DN25', 'DN40', 'DN50', 'DN80', 'DN100'], default_unit: '' },
+      { name: 'pressureRating', label: 'Pressure Rating', type: 'numeric', units: ['bar', 'psi'], default_unit: 'bar' },
+      { name: 'material', label: 'Material', type: 'string', choices: ['SS304', 'SS316', 'Carbon Steel', 'Cast Iron'], default_unit: '' },
+      { name: 'connection', label: 'Connection Type', type: 'string', choices: ['Flanged', 'Threaded', 'Welded'], default_unit: '' },
+      { name: 'temperature', label: 'Max Temp', type: 'numeric', units: ['C', 'F'], default_unit: 'C' }
+    ]
+  },
+  compressor: {
+    label: 'Compressor',
+    attributes: [
+      { name: 'capacity', label: 'Capacity', type: 'numeric', units: ['cfm', 'm3/min'], default_unit: 'cfm' },
+      { name: 'workingPressure', label: 'Working Pressure', type: 'numeric', units: ['bar', 'psi'], default_unit: 'bar' },
+      { name: 'power', label: 'Power', type: 'numeric', units: ['kW', 'HP'], default_unit: 'kW' },
+      { name: 'cooling', label: 'Cooling Type', type: 'string', choices: ['Air Cooled', 'Water Cooled'], default_unit: '' },
+      { name: 'noise', label: 'Noise Level', type: 'numeric', units: ['dBA'], default_unit: 'dBA' }
+    ]
+  },
+  gearbox: {
+    label: 'Gearbox',
+    attributes: [
+      { name: 'ratio', label: 'Gear Ratio', type: 'string', choices: ['5:1', '10:1', '15:1', '20:1', '30:1', '40:1', '50:1'], default_unit: '' },
+      { name: 'inputSpeed', label: 'Input Speed', type: 'numeric', units: ['RPM'], default_unit: 'RPM' },
+      { name: 'outputSpeed', label: 'Output Speed', type: 'numeric', units: ['RPM'], default_unit: 'RPM' },
+      { name: 'torque', label: 'Output Torque', type: 'numeric', units: ['Nm'], default_unit: 'Nm' },
+      { name: 'efficiency', label: 'Efficiency', type: 'numeric', units: ['%'], default_unit: '%' },
+      { name: 'power', label: 'Power', type: 'numeric', units: ['kW', 'HP'], default_unit: 'kW' },
+      { name: 'weight', label: 'Weight', type: 'numeric', units: ['kg'], default_unit: 'kg' },
+      { name: 'mounting', label: 'Mounting Type', type: 'string', choices: ['Foot Mount', 'Flange Mount', 'Shaft Mount'], default_unit: '' }
+    ]
+  }
+};
+
 export default function ProcurementPage() {
   const router = useRouter();
   const { showToast, createQuoteFromSupplierOffer } = useApp();
 
-  // Category Schemas metadata (acts as local fallback)
-  const categorySchemas: Record<string, any> = {
-    motor: {
-      label: "Motor",
-      attributes: [
-        { name: "power", label: "Power", type: "numeric", units: ["kW", "W", "HP"], default_unit: "kW" },
-        { name: "voltage", label: "Voltage", type: "numeric", units: ["V", "kV"], default_unit: "V" },
-        { name: "ipRating", label: "IP Rating", type: "string", choices: ["IP54", "IP55", "IP56", "IP65", "IP66"], default_unit: "" },
-        { name: "speed", label: "Speed", type: "numeric", units: ["RPM"], default_unit: "RPM" }
-      ]
-    },
-    pump: {
-      label: "Pump",
-      attributes: [
-        { name: "flowRate", label: "Flow Rate", type: "numeric", units: ["L/min", "m3/h"], default_unit: "L/min" },
-        { name: "pressure", "label": "Pressure", type: "numeric", units: ["bar", "psi"], default_unit: "bar" },
-        { name: "material", label: "Material", type: "string", choices: ["SS304", "SS316", "Cast Iron", "Bronze"], default_unit: "" },
-        { name: "temperature", label: "Max Temp", type: "numeric", units: ["C", "F"], default_unit: "C" }
-      ]
-    },
-    valve: {
-      label: "Valve",
-      attributes: [
-        { name: "size", label: "Nominal Size", type: "string", choices: ["DN15", "DN25", "DN40", "DN50", "DN80", "DN100"], default_unit: "" },
-        { name: "pressureRating", label: "Pressure Rating", type: "numeric", units: ["bar", "psi"], default_unit: "bar" },
-        { name: "material", label: "Material", type: "string", choices: ["SS304", "SS316", "Carbon Steel", "Cast Iron"], default_unit: "" },
-        { name: "connection", label: "Connection Type", type: "string", choices: ["Flanged", "Threaded", "Welded"], default_unit: "" }
-      ]
-    },
-    compressor: {
-      label: "Compressor",
-      attributes: [
-        { name: "capacity", label: "Capacity", type: "numeric", units: ["cfm", "m3/min"], default_unit: "cfm" },
-        { name: "workingPressure", label: "Working Pressure", type: "numeric", units: ["bar", "psi"], default_unit: "bar" },
-        { name: "power", label: "Power", type: "numeric", units: ["kW", "HP"], default_unit: "kW" }
-      ]
-    },
-    gearbox: {
-      label: "Gearbox",
-      attributes: [
-        { name: "ratio", label: "Gear Ratio", type: "string", choices: ["5:1", "10:1", "15:1", "20:1", "30:1", "40:1", "50:1"], default_unit: "" },
-        { name: "torque", label: "Output Torque", type: "numeric", units: ["Nm"], default_unit: "Nm" }
-      ]
-    }
-  };
-
   const [selectedCategory, setSelectedCategory] = useState<string>('motor');
   const [quantity, setQuantity] = useState<number>(50);
-  
+
   // Custom manual form states for dynamic inputs
   const [formInputs, setFormInputs] = useState<Record<string, { value: string; unit: string; mandatory: boolean; operator: string }>>({});
 
   // Prompt Input state
   const [promptText, setPromptText] = useState<string>(
-    'Need 100 motors with 7.5 kW, 415 V, IP55, price below 40000, and delivery under 10 days.'
+    'Find 1 gearbox with gear ratio 10:1, input speed 1440 RPM, efficiency at least 95%, torque at least 250 Nm, and power at least 4 kW.'
   );
 
   const [interpretedReq, setInterpretedReq] = useState<InterpretedReq | null>(null);
@@ -113,7 +124,7 @@ export default function ProcurementPage() {
 
   // Initialize form fields when category changes
   useEffect(() => {
-    const schema = categorySchemas[selectedCategory];
+    const schema = CATEGORY_SCHEMAS[selectedCategory];
     if (schema) {
       const initialForm: typeof formInputs = {};
       schema.attributes.forEach((attr: any) => {
@@ -164,6 +175,48 @@ export default function ProcurementPage() {
       });
       setSelectedCategory(res.category);
       setQuantity(res.quantity);
+
+      // Populate formInputs from returned constraints so the Dynamic Sourcing Parameters panel is updated
+      const schema = CATEGORY_SCHEMAS[res.category];
+      if (schema) {
+        const updatedForm: typeof formInputs = {};
+
+        // Initialize all schema attributes with empty defaults first
+        schema.attributes.forEach((attr: any) => {
+          updatedForm[attr.name] = {
+            value: '',
+            unit: attr.default_unit || '',
+            mandatory: true,
+            operator: attr.type === 'numeric' ? '>=' : '='
+          };
+        });
+        updatedForm['maxPrice'] = { value: '', unit: 'INR', mandatory: true, operator: '<=' };
+        updatedForm['deliveryDays'] = { value: '', unit: 'days', mandatory: true, operator: '<=' };
+
+        // Overlay with parsed constraint values
+        res.constraints.forEach((c: Constraint) => {
+          const attrKey = c.attribute;
+          if (updatedForm[attrKey] !== undefined) {
+            updatedForm[attrKey] = {
+              value: String(c.value),
+              unit: c.unit || updatedForm[attrKey]?.unit || '',
+              mandatory: c.mandatory,
+              operator: c.operator
+            };
+          } else {
+            // Unknown attribute from parsing - add dynamically
+            updatedForm[attrKey] = {
+              value: String(c.value),
+              unit: c.unit || '',
+              mandatory: c.mandatory,
+              operator: c.operator
+            };
+          }
+        });
+
+        setFormInputs(updatedForm);
+      }
+
       showToast({
         type: 'success',
         title: 'Requirement Parsed',
@@ -265,7 +318,7 @@ export default function ProcurementPage() {
     router.push('/quotes');
   };
 
-  const schema = categorySchemas[selectedCategory];
+  const schema = CATEGORY_SCHEMAS[selectedCategory];
 
   // Count items with warnings (unverified/missing data or data conflicts)
   const warningCount = searchResults
@@ -321,7 +374,7 @@ export default function ProcurementPage() {
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
               rows={3}
-              placeholder="e.g. Need 50 pumps, flow >= 120 L/min, pressure >= 8 bar, SS316, price <= ₹50,000, delivery within 10 days..."
+              placeholder="e.g. Find 1 gearbox with gear ratio 10:1, input speed 1440 RPM, efficiency at least 95%, torque at least 250 Nm, and power at least 4 kW."
               className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all leading-relaxed"
             />
             <div className="flex justify-between items-center gap-4">
@@ -330,6 +383,7 @@ export default function ProcurementPage() {
                 <span className="bg-slate-100 px-2 py-0.5 rounded">Pump</span>
                 <span className="bg-slate-100 px-2 py-0.5 rounded">Valve</span>
                 <span className="bg-slate-100 px-2 py-0.5 rounded">Compressor</span>
+                <span className="bg-slate-100 px-2 py-0.5 rounded">Gearbox</span>
               </div>
               <button
                 onClick={handleInterpretPrompt}
@@ -491,7 +545,7 @@ export default function ProcurementPage() {
         </div>
       </div>
 
-      {/* AI Review & Edit Requirement Model Panel (Requirement #15) */}
+      {/* AI Review & Edit Requirement Model Panel */}
       {interpretedReq && (
         <div className="bg-slate-50 border border-blue-200 rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-blue-100 pb-3">
@@ -617,8 +671,8 @@ export default function ProcurementPage() {
                       </span>
                     </div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      c.mandatory 
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                      c.mandatory
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
                         : 'bg-amber-50 text-amber-700 border border-amber-200'
                     }`}>
                       {c.mandatory ? 'Mandatory' : 'Preferred'}
@@ -721,8 +775,8 @@ export default function ProcurementPage() {
                           <td className="py-3.5 px-4 font-mono font-bold text-blue-700">
                             {supp.productModel}
                           </td>
-                          <td className="py-3.5 px-4 font-mono text-[11px] max-w-xs truncate" title={Object.entries(supp.specs).map(([k,v])=>`${k}:${v}`).join(' | ')}>
-                            {Object.entries(supp.specs)
+                          <td className="py-3.5 px-4 font-mono text-[11px] max-w-xs truncate" title={Object.entries(supp.specs || {}).map(([k,v])=>`${k}:${v}`).join(' | ')}>
+                            {Object.entries(supp.specs || {})
                               .filter(([_, v]) => v && v !== 'N/A')
                               .slice(0, 3)
                               .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
@@ -783,7 +837,7 @@ export default function ProcurementPage() {
                     {searchResults.alternatives.map((alt: any) => (
                       <div key={alt.id} className="flex gap-2">
                         <span className="text-rose-500 font-bold shrink-0">[{alt.supplierName}]</span>
-                        <span>{alt.productModel} failed constraints: {alt.violations.join('; ')}</span>
+                        <span>{alt.productModel} failed constraints: {alt.violations?.join('; ')}</span>
                       </div>
                     ))}
                   </div>
@@ -810,8 +864,8 @@ export default function ProcurementPage() {
                           </h4>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                          isNotRecommended 
-                            ? 'bg-rose-100 text-rose-800 border border-rose-200' 
+                          isNotRecommended
+                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
                             : 'bg-amber-100 text-amber-800 border border-amber-200'
                         }`}>
                           {alt.status} ({Math.round(alt.technicalMatchScore * 100)}%)
@@ -830,7 +884,7 @@ export default function ProcurementPage() {
                         </div>
                         <div>
                           <span className="text-slate-400 block text-[9px] uppercase tracking-wider">Category</span>
-                          <span className="font-bold text-slate-900 uppercase truncate block">{alt.category.split(' ').pop()}</span>
+                          <span className="font-bold text-slate-900 uppercase truncate block">{alt.category?.split(' ').pop()}</span>
                         </div>
                       </div>
 
@@ -839,7 +893,7 @@ export default function ProcurementPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">
                           Failed Sourcing Constraints:
                         </span>
-                        {alt.violations.map((v: string, idx: number) => (
+                        {(alt.violations || []).map((v: string, idx: number) => (
                           <div key={idx} className="p-2 rounded bg-rose-50/50 text-rose-900 text-xs font-mono flex items-start gap-1.5 border border-rose-100">
                             <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
                             <span>{v}</span>

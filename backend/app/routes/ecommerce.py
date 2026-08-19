@@ -131,14 +131,23 @@ def sync_ecommerce(product_id_or_code: str, db: Session = Depends(get_db)):
 
     # Find matching storefront product
     # Identification: Match product_code against ID or Model case-insensitively
-    matched_ecom_prod = None
+    matching_ecom_products = []
     for p in storefront_products:
         p_id = str(p.get("id", "")).lower()
         p_model = str(p.get("model", "")).lower()
         target_code = product.product_code.lower()
         if p_id == target_code or p_model == target_code:
-            matched_ecom_prod = p
-            break
+            matching_ecom_products.append(p)
+
+    if len(matching_ecom_products) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"E-commerce sync failed: ambiguous match on storefront for product code '{product.product_code}'."
+        )
+    elif len(matching_ecom_products) == 1:
+        matched_ecom_prod = matching_ecom_products[0]
+    else:
+        matched_ecom_prod = None
 
     if not matched_ecom_prod:
         # If not found directly, reject request

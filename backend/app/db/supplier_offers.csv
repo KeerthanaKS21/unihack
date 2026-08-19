@@ -1,0 +1,35 @@
+Product ID,Supplier Name,Price,Stock,Delivery Days,Notes
+GB-100,Alpha Industrial Supplies,25480.0,20,5,Direct supplier stock, 5-day express dispatch, verified OEM warranty
+GB-100,Nova Industrial Systems,27300.0,15,6,Authorized partner inventory, standard delivery
+GB-100,Prime Engineering Traders,24180.0,11,7,Lowest price alternative, standard delivery
+GB-101,Alpha Industrial Supplies,25480.0,20,5,Medium coaxial helical gearbox
+GB-101,Nova Industrial Systems,27300.0,15,6,Medium coaxial helical gearbox
+GB-101,Prime Engineering Traders,24180.0,11,7,Medium coaxial helical gearbox
+GB-102,Alpha Industrial Supplies,25480.0,20,5,Right-angle worm gearbox
+GB-102,Nova Industrial Systems,27300.0,15,6,Right-angle worm gearbox
+GB-102,Prime Engineering Traders,24180.0,11,7,Right-angle worm gearbox
+GB-103,Alpha Industrial Supplies,25480.0,20,5,Heavy-duty planetary gearbox
+GB-103,Nova Industrial Systems,27300.0,15,6,Heavy-duty planetary gearbox
+GB-103,Prime Engineering Traders,24180.0,11,7,Heavy-duty planetary gearbox
+GB-104,Alpha Industrial Supplies,25480.0,20,5,Compact helical-bevel gearbox
+GB-104,Nova Industrial Systems,27300.0,15,6,Compact helical-bevel gearbox
+GB-104,Prime Engineering Traders,24180.0,11,7,Compact helical-bevel gearbox
+M-101,Siemens Industrial Direct,42500.0,45,3,Direct OEM warranty, official 3-year support, immediate dispatch
+M-101,Crompton & Greaves Authorized Supply,39800.0,60,5,Lowest exact-spec price, local warehouse stock, bulk rebate eligible
+WEG-W22,WEG Global Industrial Supply,37500.0,80,4,Lowest price alternative, but enclosure is IP54 instead of mandatory IP55
+ABB-M2,ABB Power & Motion Hub,46200.0,12,14,Higher efficiency class IE4, but delivery time exceeds 10 days
+P-100,Crompton & Greaves Authorized Supply,48000.0,50,9,SS316 pump, 120 L/min flow, 8 bar pressure. Complete match.
+P-100,Siemens Industrial Direct,55000.0,15,12,Slightly exceeds price ceiling and lead time constraints.
+P-101,Kirloskar Electric Co,35000.0,25,8,SS304 pump, does not meet flow and pressure requirement
+V-100,Alpha Industrial Supplies,14210.0,25,4,SS316 valve, 16 bar rating, flanged. Matches specifications.
+V-100,Nova Industrial Systems,15225.0,19,5,SS316 valve, 16 bar rating, flanged. Matches specifications.
+V-100,Prime Engineering Traders,13485.0,14,6,SS316 valve, 16 bar rating, flanged. Matches specifications.
+V-101,Alpha Industrial Supplies,14210.0,25,4,High-pressure cast steel gate valve
+V-101,Nova Industrial Systems,15225.0,19,5,High-pressure cast steel gate valve
+V-101,Prime Engineering Traders,13485.0,14,6,High-pressure cast steel gate valve
+COMP-100,Alpha Industrial Supplies,161700.0,10,8,Reciprocating air compressor
+COMP-100,Nova Industrial Systems,173250.0,8,10,Reciprocating air compressor
+COMP-100,Prime Engineering Traders,153450.0,6,12,Reciprocating air compressor
+C-105,Alpha Industrial Supplies,76440.0,18,6,Outdoor NEMA VFD. Fully verified.
+C-105,Nova Industrial Systems,81900.0,14,7,Outdoor NEMA VFD. Fully verified.
+C-105,Prime Engineering Traders,72540.0,10,9,Outdoor NEMA VFD. Fully verified.

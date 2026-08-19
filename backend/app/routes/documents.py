@@ -51,3 +51,8 @@ def list_documents(
 @router.get("/{id}", response_model=DocumentResponse, summary="Get document metadata by ID")
 def get_document(id: int, db: Session = Depends(get_db)):
     return DocumentService.get_document_by_id(db, id)
+
+@router.post("/{id}/link-product", response_model=DocumentResponse, summary="Manually link an ambiguous document to a product")
+def link_document(id: int, product_id: int = Query(...), db: Session = Depends(get_db)):
+    return DocumentService.link_product_manually(db, id, product_id)
+

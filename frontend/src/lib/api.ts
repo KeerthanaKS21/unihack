@@ -128,6 +128,7 @@ export const api = {
   getProductChanges: (id: number) => request<any[]>(`/products/${id}/changes`),
   getProductCompliance: (id: number) => request<any[]>(`/products/${id}/compliance`),
   getProductCompatibility: (id: number) => request<any[]>(`/products/${id}/compatibility`),
+  approveProductSync: (id: number) => request<any>(`/products/${id}/approve-sync`, { method: 'POST' }),
 
   // Changes & Change Impacts
   getChanges: (params?: { product_id?: number; status?: string }) => {

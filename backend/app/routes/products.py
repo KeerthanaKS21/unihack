@@ -16,6 +16,7 @@ from app.schemas.document import DocumentResponse
 from app.schemas.change import ChangeResponse
 from app.schemas.certificate import CertificateResponse
 from app.schemas.compatibility import CompatibilityResponse
+from app.db.models import Product, ProductVersion, Change
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -83,3 +84,52 @@ def get_product_compliance(id: int, db: Session = Depends(get_db)):
 @router.get("/{id}/compatibility", response_model=List[CompatibilityResponse], summary="Get technical compatibility relations for a product")
 def get_product_compatibility(id: int, db: Session = Depends(get_db)):
     return ProductService.get_product_compatibility(db, id)
+
+@router.post("/{id}/approve-sync", summary="Approve pending version changes and promote to active")
+def approve_product_sync(id: int, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+        
+    draft_version = db.query(ProductVersion).filter(
+        ProductVersion.product_id == id,
+        ProductVersion.status == "DRAFT"
+    ).first()
+    
+    if not draft_version:
+        pending_changes = db.query(Change).filter(
+            Change.product_id == id,
+            Change.status == "PENDING"
+        ).all()
+        if not pending_changes:
+            return {"success": True, "message": "No pending changes found."}
+            
+        for c in pending_changes:
+            c.status = "APPROVED"
+        db.commit()
+        return {"success": True, "message": "Changes approved."}
+
+    old_version = db.query(ProductVersion).filter(
+        ProductVersion.product_id == id,
+        ProductVersion.is_current == True
+    ).first()
+    
+    if old_version:
+        old_version.is_current = False
+        old_version.status = "SUPERSEDED"
+        
+    draft_version.is_current = True
+    draft_version.status = "VERIFIED"
+    product.current_version_id = draft_version.id
+    product.status = "SYNCHRONIZED"
+    
+    pending_changes = db.query(Change).filter(
+        Change.product_id == id,
+        Change.status == "PENDING"
+    ).all()
+    for c in pending_changes:
+        c.status = "APPROVED"
+        
+    db.commit()
+    return {"success": True, "message": "Version promoted and changes approved successfully."}
+

@@ -1,4 +1,7 @@
 import sys
+import re
+import csv
+import json
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -31,493 +34,459 @@ def seed_database():
 
     try:
         print("Checking existing data...")
-        if db.query(Product).count() > 0:
-            print("Database already contains records. Clearing existing records for clean seed...")
-            db.query(QuoteItem).delete()
-            db.query(Quote).delete()
-            db.query(CatalogIssue).delete()
-            db.query(ChangeImpact).delete()
-            db.query(Change).delete()
-            db.query(Compatibility).delete()
-            db.query(Certificate).delete()
-            db.query(SupplierProduct).delete()
-            db.query(Supplier).delete()
-            db.query(ProductAttribute).delete()
-            db.query(ProductVersion).delete()
-            db.query(Document).delete()
-            db.query(Product).delete()
-            db.query(Approval).delete()
-            db.query(AuditLog).delete()
-            db.commit()
+        # Clear existing records for a clean, deterministic seed
+        db.query(QuoteItem).delete()
+        db.query(Quote).delete()
+        db.query(CatalogIssue).delete()
+        db.query(ChangeImpact).delete()
+        db.query(Change).delete()
+        db.query(Compatibility).delete()
+        db.query(Certificate).delete()
+        db.query(SupplierProduct).delete()
+        db.query(Supplier).delete()
+        db.query(ProductAttribute).delete()
+        db.query(ProductVersion).delete()
+        db.query(Document).delete()
+        db.query(Product).delete()
+        db.query(Approval).delete()
+        db.query(AuditLog).delete()
+        db.commit()
 
         print("Seeding Documents...")
-        doc1 = Document(
-            file_name="technical_spec_2026.pdf",
-            original_file_name="technical_spec_2026.pdf",
-            file_path="uploads/technical_spec_2026.pdf",
+        doc_storefront = Document(
+            file_name="products_datasheet.csv",
+            original_file_name="products_datasheet.csv",
+            file_path="d:/UniHack/website/products_datasheet.csv",
+            document_type="CATALOG",
+            file_size=19923,
+            file_size_formatted="19.9 KB",
+            mime_type="text/csv",
+            content_hash="storefront_catalog_hash_2026",
+            uploaded_by="Migration System",
+            processing_status="PROCESSED",
+            version_detected="v1.0",
+            match_confidence=1.0,
+            pages_count=1,
+            extracted_summary="Storefront product database mapping containing legacy specifications."
+        )
+        # Locate engineering specs CSV
+        eng_csv_candidates = [
+            Path(__file__).resolve().parent / "uploads" / "1787138755_product_specifications_separate_columns.csv",
+            Path(__file__).resolve().parent / "app" / "db" / "engineering_catalog.csv",
+            Path(__file__).resolve().parent / "uploads" / "1787127272_product_specifications_separate_columns.csv"
+        ]
+        eng_csv_path = None
+        for cand in eng_csv_candidates:
+            if cand.exists():
+                eng_csv_path = cand
+                break
+        if not eng_csv_path:
+            eng_csv_path = eng_csv_candidates[1]
+
+        doc_engineering = Document(
+            file_name=eng_csv_path.name if eng_csv_path else "engineering_catalog.csv",
+            original_file_name=eng_csv_path.name if eng_csv_path else "engineering_catalog.csv",
+            file_path=str(eng_csv_path),
             document_type="DATASHEET",
-            file_size=5033164,
-            file_size_formatted="4.8 MB",
-            mime_type="application/pdf",
-            content_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            file_size=2832,
+            file_size_formatted="2.8 KB",
+            mime_type="text/csv",
+            content_hash="engineering_specs_hash_2026",
             uploaded_by="Engineering Lead",
             processing_status="PROCESSED",
             version_detected="v2.0",
-            match_confidence=0.94,
-            pages_count=6,
-            extracted_summary="Power upgraded (5.5 kW → 7.5 kW), Speed adjusted (1440 → 1460 RPM), Weight (42 → 45 kg)"
-        )
-        doc2 = Document(
-            file_name="motor_old.pdf",
-            original_file_name="motor_old.pdf",
-            file_path="uploads/motor_old.pdf",
-            document_type="DATASHEET",
-            file_size=3355443,
-            file_size_formatted="3.2 MB",
-            mime_type="application/pdf",
-            content_hash="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-            uploaded_by="Archive Migration",
-            processing_status="PROCESSED",
-            version_detected="v1.4",
             match_confidence=1.0,
-            pages_count=4,
-            extracted_summary="Baseline Siemens XYZ-450 v1.4 legacy specification release 2024."
+            pages_count=1,
+            extracted_summary="Verified engineering catalog release 2026."
         )
-        doc3 = Document(
-            file_name="certificate_xyz450.pdf",
-            original_file_name="certificate_xyz450.pdf",
-            file_path="uploads/certificate_xyz450.pdf",
-            document_type="CERTIFICATE",
-            file_size=1468006,
-            file_size_formatted="1.4 MB",
-            mime_type="application/pdf",
-            content_hash="5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
-            uploaded_by="Quality Assurance",
-            processing_status="PROCESSED",
-            version_detected="v2.0",
-            match_confidence=0.98,
-            pages_count=2,
-            extracted_summary="CE & IEC 60034-1 Conformity Certificate for XYZ-450."
-        )
-        doc4 = Document(
-            file_name="supplier_catalog.xlsx",
-            original_file_name="supplier_catalog.xlsx",
-            file_path="uploads/supplier_catalog.xlsx",
-            document_type="CATALOG",
-            file_size=2097152,
-            file_size_formatted="2.0 MB",
-            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            content_hash="4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
-            uploaded_by="Procurement Desk",
-            processing_status="PROCESSED",
-            version_detected="2026-Q3",
-            match_confidence=0.91,
-            pages_count=12,
-            extracted_summary="Supplier pricing, lead time, and warehouse inventory matrix."
-        )
-        db.add_all([doc1, doc2, doc3, doc4])
+        db.add_all([doc_storefront, doc_engineering])
         db.commit()
 
-        print("Seeding Products & Versions...")
-        # 1. XYZ-450 Industrial Motor
-        p1 = Product(
-            product_code="XYZ-450",
-            name="XYZ-450 Industrial Induction Motor",
-            manufacturer="Siemens",
-            category="Electric Motors & Drives",
-            description="Premium severe-duty 3-phase TEFC cast iron induction motor engineered for continuous continuous industrial pumping, conveyor, and fan operations.",
-            status="ACTIVE",
-            image_url="https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800&auto=format&fit=crop&q=80",
-            health_score=94
-        )
-        # 2. ABC-550 Pump
-        p2 = Product(
-            product_code="ABC-550",
-            name="ABC-550 High-Pressure Centrifugal Pump",
-            manufacturer="Grundfos Industrial",
-            category="Industrial Pumps & Valves",
-            description="Multi-stage stainless steel centrifugal booster pump for chemical processing and industrial water circulation.",
-            status="ACTIVE",
-            image_url="https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&auto=format&fit=crop&q=80",
-            health_score=89
-        )
-        # 3. CTRL-100 Controller
-        p3 = Product(
-            product_code="CTRL-100",
-            name="ABC-100 Variable Frequency Inverter Drive",
-            manufacturer="ABB Automation",
-            category="Automation & Controllers",
-            description="Compact industrial VFD motor speed controller with vector torque control and Modbus RS485 communication.",
-            status="ACTIVE",
-            image_url="https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?w=800&auto=format&fit=crop&q=80",
-            health_score=92
-        )
-        # 4. WEG-W22
-        p4 = Product(
-            product_code="WEG-W22",
-            name="WEG W22 Severe Duty Induction Motor",
-            manufacturer="WEG Global",
-            category="Electric Motors & Drives",
-            description="High-efficiency cast-iron electric motor designed to provide low operating costs and reduced noise.",
-            status="ACTIVE",
-            image_url="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80",
-            health_score=91
-        )
-        # 5. ABB-M2
-        p5 = Product(
-            product_code="ABB-M2",
-            name="ABB M2BAX Process Performance Motor",
-            manufacturer="ABB Heavy Industries",
-            category="Electric Motors & Drives",
-            description="Process performance cast iron motor built for heavy industrial and harsh chemical environment reliability.",
-            status="ACTIVE",
-            image_url="https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800&auto=format&fit=crop&q=80",
-            health_score=93
-        )
-        db.add_all([p1, p2, p3, p4, p5])
-        db.commit()
-
-        # Link documents to p1
-        doc1.product_id = p1.id
-        doc2.product_id = p1.id
-        doc3.product_id = p1.id
-        db.commit()
-
-        # Versions for XYZ-450
-        v1 = ProductVersion(
-            product_id=p1.id,
-            version_number="v1.4",
-            source_document_id=doc2.id,
-            effective_date=datetime.utcnow() - timedelta(days=500),
-            is_current=False,
-            verified_by="Archive System",
-            status="SUPERSEDED"
-        )
-        v2 = ProductVersion(
-            product_id=p1.id,
-            version_number="v2.0",
-            source_document_id=doc1.id,
-            effective_date=datetime.utcnow(),
-            is_current=True,
-            verified_by="Engineering Lead",
-            status="VERIFIED"
-        )
-        db.add_all([v1, v2])
-        db.commit()
-
-        p1.current_version_id = v2.id
-        db.commit()
-
-        # Attributes for v1.4
-        v1_attrs = [
-            ProductAttribute(product_version_id=v1.id, attribute_name="Rated Output", attribute_value="5.5 kW (7.5 HP)", normalized_value=5.5, unit="kW", confidence=1.0),
-            ProductAttribute(product_version_id=v1.id, attribute_name="Rated Voltage", attribute_value="415 V 3-Phase", normalized_value=415.0, unit="V", confidence=1.0),
-            ProductAttribute(product_version_id=v1.id, attribute_name="Synchronous Speed", attribute_value="1440 RPM", normalized_value=1440.0, unit="RPM", confidence=1.0),
-            ProductAttribute(product_version_id=v1.id, attribute_name="Protection Degree", attribute_value="IP55", unit="IP", confidence=1.0),
-            ProductAttribute(product_version_id=v1.id, attribute_name="Gross Weight", attribute_value="42 kg", normalized_value=42.0, unit="kg", confidence=1.0),
-            ProductAttribute(product_version_id=v1.id, attribute_name="Efficiency", attribute_value="89.6%", normalized_value=89.6, unit="%", confidence=1.0)
+        # 1. Parse and seed ALL products from Storefront Catalog (legacy baseline)
+        print("Parsing storefront datasheet CSV...")
+        storefront_csv_candidates = [
+            Path("d:/UniHack/website/products_datasheet.csv"),
+            Path(__file__).resolve().parent / "app" / "db" / "legacy_catalog.csv"
         ]
-        # Attributes for v2.0
-        v2_attrs = [
-            ProductAttribute(product_version_id=v2.id, attribute_name="Rated Output", attribute_value="7.5 kW (10 HP)", normalized_value=7.5, unit="kW", confidence=0.98, source_document_id=doc1.id, source_page=1),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Rated Voltage", attribute_value="415 V ±10% 3-Phase", normalized_value=415.0, unit="V", confidence=0.99, source_document_id=doc1.id, source_page=2),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Synchronous Speed", attribute_value="1460 RPM at 50Hz", normalized_value=1460.0, unit="RPM", confidence=0.97, source_document_id=doc1.id, source_page=2),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Protection Degree", attribute_value="IP55 Dust & Water Jet", unit="IP", confidence=0.99, source_document_id=doc1.id, source_page=4),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Gross Weight", attribute_value="45.2 kg", normalized_value=45.2, unit="kg", confidence=0.96, source_document_id=doc1.id, source_page=4),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Full Load Efficiency", attribute_value="91.2%", normalized_value=91.2, unit="%", confidence=0.98, source_document_id=doc1.id, source_page=1),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Standard Compliance", attribute_value="IEC 60034-1 / IS 12615:2018", confidence=0.98, source_document_id=doc1.id, source_page=5)
+        storefront_csv_path = None
+        for cand in storefront_csv_candidates:
+            if cand.exists():
+                storefront_csv_path = cand
+                break
+        if not storefront_csv_path:
+            storefront_csv_path = storefront_csv_candidates[1]
+        
+        with open(storefront_csv_path, mode='r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                p_code = row.get("Product ID") or row.get("ID")
+                p_name = row.get("Name")
+                p_cat = row.get("Category")
+                p_desc = row.get("Description") or f"{p_name} standard industrial supply."
+                p_ver = row.get("Database Version") or "1"
+                
+                if not p_code or not p_name or not p_cat:
+                    continue
+                    
+                # Create legacy product
+                p = Product(
+                    product_code=p_code,
+                    name=p_name,
+                    manufacturer="Siemens" if "motor" in p_cat.lower() else ("Grundfos Industrial" if "pump" in p_cat.lower() else "ABB Automation"),
+                    category=p_cat,
+                    description=p_desc,
+                    status="LEGACY",
+                    image_url="https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&auto=format&fit=crop&w=600&q=80",
+                    health_score=85
+                )
+                db.add(p)
+                db.commit()
+                db.refresh(p)
+                
+                # Add version v1.0
+                v = ProductVersion(
+                    product_id=p.id,
+                    version_number=f"v{p_ver}.0",
+                    source_document_id=doc_storefront.id,
+                    is_current=True,
+                    status="VERIFIED"
+                )
+                db.add(v)
+                db.commit()
+                db.refresh(v)
+                p.current_version_id = v.id
+                db.commit()
+                
+                # Extract dynamic specifications columns
+                metadata_cols = ["Product ID", "ID", "Model Reference", "Name", "Category", "Description", "Database Version", "Last Checked Date"]
+                for col_name, raw_val in row.items():
+                    if col_name in metadata_cols or not raw_val or raw_val.strip() in ("", "None", "null"):
+                        continue
+                        
+                    # Normalize numerical value and unit
+                    normalized_value = None
+                    unit = None
+                    num_match = re.match(r"^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z°%/-]+(?:\s+[a-zA-Z0-9°%/-]+)*)?\s*$", raw_val)
+                    if num_match:
+                        normalized_value = float(num_match.group(1))
+                        unit = num_match.group(2)
+                        
+                    attr = ProductAttribute(
+                        product_version_id=v.id,
+                        attribute_name=col_name,
+                        attribute_value=raw_val,
+                        normalized_value=normalized_value,
+                        unit=unit,
+                        source_document_id=doc_storefront.id,
+                        confidence=0.95,
+                        verification_status="VERIFIED"
+                    )
+                    db.add(attr)
+                db.commit()
+
+        # 2. Parse and apply updates from Engineering Specification CSV (v2.0)
+        print("Parsing verified engineering specs CSV...")
+        
+        with open(eng_csv_path, mode='r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                p_code = row.get("ID") or row.get("Product ID")
+                p_name = row.get("Name")
+                p_cat = row.get("Category")
+                
+                if not p_code:
+                    continue
+                    
+                # Look up product in master DB
+                p = db.query(Product).filter(Product.product_code == p_code).first()
+                if not p:
+                    # If not exists (e.g. M-101 / XYZ-450 was seeded as XYZ-450, let's map it or create it)
+                    p = Product(
+                        product_code=p_code,
+                        name=p_name,
+                        manufacturer="Siemens" if "motor" in p_cat.lower() else "ABB Automation",
+                        category=p_cat,
+                        status="ACTIVE",
+                        image_url="https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&auto=format&fit=crop&w=600&q=80",
+                        health_score=95
+                    )
+                    db.add(p)
+                    db.commit()
+                    db.refresh(p)
+                else:
+                    # Update status to ACTIVE (verified)
+                    p.status = "ACTIVE"
+                    p.health_score = 95
+                    db.commit()
+
+                # Get current active version
+                old_ver = db.query(ProductVersion).filter(
+                    ProductVersion.product_id == p.id,
+                    ProductVersion.is_current == True
+                ).first()
+                
+                is_gb100 = (p.product_code == "GB-100")
+                
+                if is_gb100:
+                    # Keep old version v1.0 as current, and stage v2.0 as DRAFT
+                    v2 = ProductVersion(
+                        product_id=p.id,
+                        version_number="v2.0",
+                        source_document_id=doc_engineering.id,
+                        is_current=False,
+                        status="DRAFT"
+                    )
+                    p.status = "CHANGES_DETECTED"
+                else:
+                    if old_ver:
+                        old_ver.is_current = False
+                        old_ver.status = "SUPERSEDED"
+                    v2 = ProductVersion(
+                        product_id=p.id,
+                        version_number="v2.0",
+                        source_document_id=doc_engineering.id,
+                        is_current=True,
+                        status="VERIFIED"
+                    )
+                    p.status = "ACTIVE"
+                
+                db.add(v2)
+                db.commit()
+                db.refresh(v2)
+                if not is_gb100:
+                    p.current_version_id = v2.id
+                    db.commit()
+
+                # Extract and write specifications dynamically
+                metadata_cols = ["ID", "Product ID", "Name", "Category", "Version"]
+                changes_list = []
+                for col_name, raw_val in row.items():
+                    if col_name in metadata_cols or not raw_val or raw_val.strip() in ("", "None", "null"):
+                        continue
+                        
+                    # Normalize numerical value and unit
+                    normalized_value = None
+                    unit = None
+                    num_match = re.match(r"^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z°%/-]+(?:\s+[a-zA-Z0-9°%/-]+)*)?\s*$", raw_val)
+                    if num_match:
+                        normalized_value = float(num_match.group(1))
+                        unit = num_match.group(2)
+                        
+                    attr = ProductAttribute(
+                        product_version_id=v2.id,
+                        attribute_name=col_name,
+                        attribute_value=raw_val,
+                        normalized_value=normalized_value,
+                        unit=unit,
+                        source_document_id=doc_engineering.id,
+                        confidence=0.99,
+                        verification_status="VERIFIED"
+                    )
+                    db.add(attr)
+
+                    # Check for changes against v1.0
+                    if old_ver:
+                        old_attr = db.query(ProductAttribute).filter(
+                            ProductAttribute.product_version_id == old_ver.id,
+                            ProductAttribute.attribute_name == col_name
+                        ).first()
+                        old_v = old_attr.attribute_value if old_attr else ""
+                        if old_v != raw_val:
+                            changes_list.append((col_name, old_v, raw_val))
+                db.commit()
+
+                # Create Change and ChangeImpact records for specification shifts
+                for attr_name, old_val, new_val in changes_list:
+                    chg = Change(
+                        product_id=p.id,
+                        old_version_id=old_ver.id if old_ver else None,
+                        new_version_id=v2.id,
+                        attribute_name=attr_name,
+                        old_value=old_val,
+                        new_value=new_val,
+                        change_type="MODIFIED",
+                        source_document="1787127272_product_specifications_separate_columns.csv",
+                        confidence=0.99,
+                        status="PENDING" if is_gb100 else "APPROVED"
+                    )
+                    db.add(chg)
+                    db.commit()
+                    db.refresh(chg)
+
+                    # Storefront mismatch impact
+                    ecom_imp = ChangeImpact(
+                        change_id=chg.id,
+                        impact_type="E-commerce",
+                        affected_entity_type="Storefront Listing",
+                        affected_entity_id=f"SKU-{p.product_code}",
+                        title="B2B Storefront Specification Mismatch",
+                        description=f"Online catalog displays {old_val}. Engineering release updates it to {new_val}.",
+                        context_evidence="Ingestion datasheet attribute mismatch.",
+                        severity="high",
+                        reviewed=False,
+                        target_module_url="/ecommerce"
+                    )
+                    db.add(ecom_imp)
+                db.commit()
+
+        # 3. Seed Suppliers
+        print("Seeding B2B Suppliers...")
+        suppliers_data = [
+            {"name": "Alpha Industrial Supplies", "supplier_code": "SUP-ALPHA", "tier": "Authorized Partner", "rating": 4.8},
+            {"name": "Nova Industrial Systems", "supplier_code": "SUP-NOVA", "tier": "Direct OEM", "rating": 4.9},
+            {"name": "Prime Engineering Traders", "supplier_code": "SUP-PRIME", "tier": "Authorized Partner", "rating": 4.7},
+            {"name": "Siemens Industrial Direct", "supplier_code": "SUP-SIEMENS", "tier": "Direct OEM", "rating": 4.9},
+            {"name": "Crompton & Greaves Authorized Supply", "supplier_code": "SUP-CROMPTON", "tier": "Authorized Partner", "rating": 4.7},
+            {"name": "ABB Power & Motion Hub", "supplier_code": "SUP-ABB", "tier": "Authorized Partner", "rating": 4.8},
+            {"name": "WEG Global Industrial Supply", "supplier_code": "SUP-WEG", "tier": "Distributor", "rating": 4.2},
+            {"name": "Havells Industrial Power", "supplier_code": "SUP-HAVELLS", "tier": "Authorized Partner", "rating": 4.5},
+            {"name": "Kirloskar Electric Co", "supplier_code": "SUP-KIRLOSKAR", "tier": "Direct OEM", "rating": 4.6}
         ]
-        db.add_all(v1_attrs + v2_attrs)
-        db.commit()
+        suppliers = {}
+        for s_info in suppliers_data:
+            sup = Supplier(
+                name=s_info["name"],
+                supplier_code=s_info["supplier_code"],
+                contact_email=f"sales@{s_info['supplier_code'].lower()}.com",
+                phone="+91 22 6789 0001",
+                address="Industrial Zone, Mumbai",
+                tier=s_info["tier"],
+                rating=s_info["rating"],
+                status="ACTIVE"
+            )
+            db.add(sup)
+            db.commit()
+            db.refresh(sup)
+            suppliers[s_info["name"]] = sup
+            suppliers[s_info["supplier_code"]] = sup
 
-        print("Seeding Changes & Change Impacts...")
-        chg1 = Change(
-            product_id=p1.id,
-            old_version_id=v1.id,
-            new_version_id=v2.id,
-            attribute_name="Rated Output",
-            old_value="5.5 kW",
-            new_value="7.5 kW",
-            change_type="MODIFIED",
-            source_document="technical_spec_2026.pdf (Page 1)",
-            confidence=0.98,
-            status="PENDING"
-        )
-        chg2 = Change(
-            product_id=p1.id,
-            old_version_id=v1.id,
-            new_version_id=v2.id,
-            attribute_name="Synchronous Speed",
-            old_value="1440 RPM",
-            new_value="1460 RPM",
-            change_type="MODIFIED",
-            source_document="technical_spec_2026.pdf (Page 2)",
-            confidence=0.97,
-            status="PENDING"
-        )
-        chg3 = Change(
-            product_id=p1.id,
-            old_version_id=v1.id,
-            new_version_id=v2.id,
-            attribute_name="Gross Weight",
-            old_value="42 kg",
-            new_value="45 kg",
-            change_type="MODIFIED",
-            source_document="technical_spec_2026.pdf (Page 4)",
-            confidence=0.96,
-            status="PENDING"
-        )
-        chg4 = Change(
-            product_id=p1.id,
-            old_version_id=v1.id,
-            new_version_id=v2.id,
-            attribute_name="Rated Voltage",
-            old_value="415 V",
-            new_value="415 V",
-            change_type="UNCHANGED",
-            source_document="technical_spec_2026.pdf (Page 2)",
-            confidence=0.99,
-            status="APPROVED"
-        )
-        db.add_all([chg1, chg2, chg3, chg4])
-        db.commit()
+        # 4. Parse and seed Supplier Offerings from Master Catalog CSV and Supplier Offers CSV
+        print("Parsing supplier offerings CSV...")
+        seeded_pairs = set()
 
-        # Operational Impacts
-        imp1 = ChangeImpact(
-            change_id=chg1.id,
-            impact_type="Compatibility",
-            affected_entity_type="Controller Drive",
-            affected_entity_id="CTRL-100",
-            title="Drive Inverter ABC-100 Thermal Overload",
-            description="Upstream drive ABC-100 is rated for 5.5 kW max output. Upgrading XYZ-450 to 7.5 kW will trip the breaker under full mechanical load.",
-            context_evidence="Drivetrain topology graph shows 5.5kW inverter limit.",
-            severity="critical",
-            reviewed=False,
-            target_module_url="/compatibility"
-        )
-        imp2 = ChangeImpact(
-            change_id=chg3.id,
-            impact_type="Compatibility",
-            affected_entity_type="Mechanical Coupling",
-            affected_entity_id="CP-50",
-            title="Flexible Coupling Shaft Bore Mismatch",
-            description="Frame size increased from 112M to 132M (shaft 24mm → 28mm). Coupling CP-50 cannot mount without re-boring.",
-            context_evidence="Mechanical drawing page 4 indicates 28mm shaft diameter.",
-            severity="high",
-            reviewed=False,
-            target_module_url="/compatibility"
-        )
-        imp3 = ChangeImpact(
-            change_id=chg1.id,
-            impact_type="E-commerce",
-            affected_entity_type="Storefront Listing",
-            affected_entity_id="SKU-XYZ-450",
-            title="B2B Storefront Specification Mismatch",
-            description="Online catalog currently displays 5.5 kW (legacy v1.4). Customers ordering will receive 7.5 kW motor.",
-            context_evidence="Shopify/SAP Commerce API payload needs push.",
-            severity="high",
-            reviewed=False,
-            target_module_url="/ecommerce"
-        )
-        imp4 = ChangeImpact(
-            change_id=chg1.id,
-            impact_type="Procurement",
-            affected_entity_type="Supplier Price Contract",
-            affected_entity_id="SUP-SIEMENS",
-            title="Supplier Price Tier Adjustment (+18%)",
-            description="OEM base price increases from ₹36,000 to ₹42,500 for the 7.5 kW rating. Target BOM margins must be re-evaluated.",
-            context_evidence="Supplier catalog Q3 pricing matrix.",
-            severity="medium",
-            reviewed=False,
-            target_module_url="/procurement"
-        )
-        imp5 = ChangeImpact(
-            change_id=chg1.id,
-            impact_type="Quote",
-            affected_entity_type="Pending Customer RFQ",
-            affected_entity_id="QT-2026-8941",
-            title="Active Quote QT-2026-8941 Specification Outdated",
-            description="Quote submitted to Jindal Steel for 10 units of 5.5 kW. Must issue revised quote v2.0 with 7.5 kW specs.",
-            context_evidence="Customer RFQ references pump pairing requiring 7.5 kW.",
-            severity="high",
-            reviewed=True,
-            reviewed_by="Sales Operations Lead",
-            reviewed_at=datetime.utcnow() - timedelta(hours=2),
-            target_module_url="/quotes"
-        )
-        imp6 = ChangeImpact(
-            change_id=chg1.id,
-            impact_type="Recommendations",
-            affected_entity_type="Recommended Alternative",
-            affected_entity_id="ABB-M2",
-            title="Cross-Sell & Sourcing Recommendation",
-            description="Recommend ABB-M2 or Crompton 7.5 kW as valid secondary supply sources to mitigate single-vendor risk.",
-            context_evidence="Procurement match score 96%.",
-            severity="low",
-            reviewed=True,
-            reviewed_by="Procurement Lead",
-            reviewed_at=datetime.utcnow() - timedelta(hours=4),
-            target_module_url="/procurement"
-        )
-        db.add_all([imp1, imp2, imp3, imp4, imp5, imp6])
-        db.commit()
+        # 4a. Master product supplier catalog (if present)
+        master_catalog_csv = Path(__file__).resolve().parent / "uploads" / "1787142633_master_product_supplier_catalog.csv"
+        if master_catalog_csv.exists():
+            with open(master_catalog_csv, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    p_code = row.get("ID") or row.get("Product ID")
+                    s_code = row.get("Supplier ID")
+                    s_name = row.get("Supplier Name")
+                    price_str = row.get("Unit Price (INR)")
+                    stock_str = row.get("Stock Qty")
+                    deliv_str = row.get("Delivery Days")
+                    notes = row.get("Supplier Data Source") or "Verified supplier offering."
 
-        print("Seeding Suppliers & Supplier Products...")
-        s1 = Supplier(name="Siemens Industrial Direct", supplier_code="SUP-SIEMENS", contact_email="orders@siemens-direct.com", phone="+91 22 6789 0001", address="Siemens Corporate Park, Worli, Mumbai", tier="Direct OEM", rating=4.9, status="ACTIVE")
-        s2 = Supplier(name="Crompton & Greaves Authorized Supply", supplier_code="SUP-CROMPTON", contact_email="b2b@cg-power.com", phone="+91 22 4567 8900", address="Kanjurmarg East, Mumbai", tier="Authorized Partner", rating=4.8, status="ACTIVE")
-        s3 = Supplier(name="ABB Power & Motion Hub", supplier_code="SUP-ABB", contact_email="motion@in.abb.com", phone="+91 80 2294 9111", address="Peenya Industrial Area, Bengaluru", tier="Authorized Partner", rating=4.7, status="ACTIVE")
-        s4 = Supplier(name="WEG Global Industrial Supply", supplier_code="SUP-WEG", contact_email="sales.in@weg.net", phone="+91 44 2681 1200", address="Ambattur Industrial Estate, Chennai", tier="Distributor", rating=4.4, status="ACTIVE")
-        db.add_all([s1, s2, s3, s4])
-        db.commit()
+                    if not p_code or not price_str:
+                        continue
 
-        # Supplier Products
-        sp1 = SupplierProduct(supplier_id=s1.id, product_id=p1.id, supplier_product_code="SIEM-XYZ450-IE3", price=42500.0, currency="INR", stock_quantity=45, delivery_days=3, minimum_order_quantity=1, technical_match_score=1.0, is_exact_match="Exact Match", supplier_status="AVAILABLE", advantage_notes="Direct OEM warranty, official 3-year support, immediate dispatch")
-        sp2 = SupplierProduct(supplier_id=s2.id, product_id=p1.id, supplier_product_code="CG-EM-75KW-4P", price=39800.0, currency="INR", stock_quantity=60, delivery_days=5, minimum_order_quantity=2, technical_match_score=0.98, is_exact_match="Exact Match", supplier_status="AVAILABLE", advantage_notes="Lowest exact-spec price, local warehouse stock, bulk rebate eligible")
-        sp3 = SupplierProduct(supplier_id=s3.id, product_id=p5.id, supplier_product_code="ABB-M2BAX-132M", price=46200.0, currency="INR", stock_quantity=12, delivery_days=14, minimum_order_quantity=1, technical_match_score=0.96, is_exact_match="Closest Alternative", supplier_status="AVAILABLE", advantage_notes="Higher efficiency class IE4, but delivery time exceeds 10 days")
-        sp4 = SupplierProduct(supplier_id=s4.id, product_id=p4.id, supplier_product_code="WEG-W22-7.5KW", price=37500.0, currency="INR", stock_quantity=80, delivery_days=4, minimum_order_quantity=1, technical_match_score=0.88, is_exact_match="Closest Alternative", supplier_status="AVAILABLE", advantage_notes="Lowest price alternative, but enclosure is IP54 instead of mandatory IP55")
-        db.add_all([sp1, sp2, sp3, sp4])
-        db.commit()
+                    p = db.query(Product).filter(Product.product_code == p_code).first()
+                    sup = suppliers.get(s_code) or suppliers.get(s_name)
 
+                    if p and sup:
+                        pair_key = (p.id, sup.id)
+                        if pair_key not in seeded_pairs:
+                            seeded_pairs.add(pair_key)
+                            sp = SupplierProduct(
+                                supplier_id=sup.id,
+                                product_id=p.id,
+                                supplier_product_code=f"{p_code}-{sup.supplier_code}",
+                                price=float(price_str),
+                                currency=row.get("Currency") or "INR",
+                                stock_quantity=int(stock_str or 10),
+                                delivery_days=int(deliv_str or 7),
+                                minimum_order_quantity=int(row.get("MOQ") or 1),
+                                technical_match_score=1.0,
+                                is_exact_match="Exact Match",
+                                supplier_status=row.get("Offer Status") or "AVAILABLE",
+                                advantage_notes=notes
+                            )
+                            db.add(sp)
+            db.commit()
+
+        # 4b. Supplier offers CSV for any additional products (e.g. M-101, P-100)
+        supplier_csv_path = Path(__file__).resolve().parent / "app" / "db" / "supplier_offers.csv"
+        if supplier_csv_path.exists():
+            with open(supplier_csv_path, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    p_code = row.get("Product ID")
+                    s_name = row.get("Supplier Name")
+                    price = float(row.get("Price"))
+                    stock = int(row.get("Stock"))
+                    delivery = int(row.get("Delivery Days"))
+                    notes = row.get("Notes")
+
+                    p = db.query(Product).filter(Product.product_code == p_code).first()
+                    sup = suppliers.get(s_name)
+
+                    if p and sup:
+                        pair_key = (p.id, sup.id)
+                        if pair_key not in seeded_pairs:
+                            seeded_pairs.add(pair_key)
+                            sp = SupplierProduct(
+                                supplier_id=sup.id,
+                                product_id=p.id,
+                                supplier_product_code=f"{p_code}-{sup.supplier_code}",
+                                price=price,
+                                currency="INR",
+                                stock_quantity=stock,
+                                delivery_days=delivery,
+                                minimum_order_quantity=1,
+                                technical_match_score=1.0 if delivery <= 7 else 0.85,
+                                is_exact_match="Exact Match" if delivery <= 7 else "Closest Alternative",
+                                supplier_status="AVAILABLE",
+                                advantage_notes=notes
+                            )
+                            db.add(sp)
+            db.commit()
+
+        # 5. Create some dummy unresolved issues for Catalog Health metrics
         print("Seeding Catalog Issues...")
-        iss1 = CatalogIssue(
-            product_id=p1.id,
-            issue_type="conflict",
-            attribute_name="Rated Voltage",
-            title="Rated Voltage Conflict (415 V vs 440 V)",
-            description="Engineering datasheet (Page 2) confirms 415 V ±10% 3-Phase. ERP database currently lists 440 V. Cross-system conflict causes quoting discrepancies.",
-            sources=[
-                {"sourceName": "technical_spec_2026.pdf (Page 2)", "value": "415 V 3-Phase", "priority": "High (OEM Datasheet)", "confidence": 0.99},
-                {"sourceName": "SAP ERP Product Master", "value": "440 V", "priority": "Medium (Internal ERP)", "confidence": 0.85},
-                {"sourceName": "E-Commerce Catalog Feed", "value": "415 V", "priority": "Low (Web Listing)", "confidence": 0.90}
-            ],
-            ai_recommendation={
-                "suggestedValue": "415 V 3-Phase",
-                "reasoning": "OEM datasheet technical_spec_2026.pdf explicitly states 415 V 50Hz for India/EU grid standard. The 440V ERP entry was a legacy typo.",
-                "confidence": 0.99,
-                "standardReference": "IEC 60038 Standard Voltages"
-            },
-            evidence="technical_spec_2026.pdf page 2 line 14: 'Rated Supply: 415V AC, 3 Phase, 50Hz'",
-            severity="critical",
-            status="open"
-        )
-        iss2 = CatalogIssue(
-            product_id=p2.id,
-            issue_type="missing",
-            attribute_name="Full Load Efficiency",
-            title="Missing Full Load Efficiency Rating on ABC-550",
-            description="Product record lacks standardized efficiency percentage required for green procurement qualification.",
-            sources=[{"sourceName": "Product Master", "value": "NULL", "priority": "High", "confidence": 0.0}],
-            ai_recommendation={
-                "suggestedValue": "91.8%",
-                "reasoning": "Extracted from Grundfos standard curve test report (Doc #GF-2025-PMP).",
-                "confidence": 0.94,
-                "standardReference": "ISO 9906 Grade 2B"
-            },
-            evidence="Pump performance test curve sheet GF-2025-PMP page 3.",
-            severity="medium",
-            status="open"
-        )
-        iss3 = CatalogIssue(
-            product_id=p1.id,
-            issue_type="outdated",
-            attribute_name="Standard Compliance",
-            title="Outdated IS 325 Standard Reference",
-            description="Legacy record references superseded IS 325 standard instead of current IS 12615:2018 energy efficiency standards.",
-            sources=[{"sourceName": "motor_old.pdf", "value": "IS 325:1996", "priority": "Low", "confidence": 0.80}],
-            ai_recommendation={
-                "suggestedValue": "IS 12615:2018 / IEC 60034-30-1 (IE3 Class)",
-                "reasoning": "IS 325 was formally superseded by Bureau of Indian Standards for 3-phase induction motors.",
-                "confidence": 0.97,
-                "standardReference": "BIS Standard Gazetted 2018"
-            },
-            evidence="technical_spec_2026.pdf page 5 specifies IS 12615:2018 compliance.",
-            severity="low",
-            status="open"
-        )
-        db.add_all([iss1, iss2, iss3])
+        for p_code, issue_type, attr, title, desc_text in [
+            ("M-101", "conflict", "Rated Voltage", "Rated Voltage Conflict (415 V vs 440 V)", "Datasheet confirms 415 V standard, ERP lists 440 V."),
+            ("P-100", "missing", "Full Load Efficiency", "Missing Full Load Efficiency Rating", "Pump record lacks efficiency spec."),
+            ("GB-100", "outdated", "Standard Compliance", "Outdated IS 325 Standard Reference", "Gearbox references superseded standards.")
+        ]:
+            prod = db.query(Product).filter(Product.product_code == p_code).first()
+            if prod:
+                iss = CatalogIssue(
+                    product_id=prod.id,
+                    issue_type=issue_type,
+                    attribute_name=attr,
+                    title=title,
+                    description=desc_text,
+                    status="open",
+                    severity="critical" if issue_type == "conflict" else "medium",
+                    sources=[{"sourceName": "technical_spec_2026.pdf", "value": "415 V"}],
+                    ai_recommendation={"suggestedValue": "415 V", "reasoning": "Baseline standardization."}
+                )
+                db.add(iss)
         db.commit()
 
+        # 6. Compliance certificates
         print("Seeding Compliance Certificates...")
-        c1 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="IEC-60034-2024-098", standard="IEC 60034-1 Rotating Electrical Machines", issue_date=datetime.utcnow() - timedelta(days=200), expiry_date=datetime.utcnow() + timedelta(days=900), status="VALID", verification_status="Compliant", ai_confidence=0.99, ai_recommendation="Valid international standard conformity certificate.")
-        c2 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="CE-LVD-2024-4412", standard="CE Low Voltage Directive 2014/35/EU", issue_date=datetime.utcnow() - timedelta(days=300), expiry_date=datetime.utcnow() + timedelta(days=450), status="VALID", verification_status="Compliant", ai_confidence=0.98, ai_recommendation="Compliant with EU market safety declarations.")
-        c3 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="ATEX-2023-EX-009", standard="ATEX Directive 2014/34/EU (Zone 2 Hazardous)", issue_date=datetime.utcnow() - timedelta(days=680), expiry_date=datetime.utcnow() + timedelta(days=45), status="EXPIRING", verification_status="Action Required", ai_confidence=0.95, ai_recommendation="Certificate expires in 45 days. Request re-certification from Siemens Quality Desk.", issue_description="Expiring in 45 days. Needs renewal submission.")
-        c4 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="ROHS-3-2025-IND", standard="RoHS 3 Directive (EU 2015/863)", issue_date=datetime.utcnow() - timedelta(days=100), expiry_date=datetime.utcnow() + timedelta(days=620), status="VALID", verification_status="Compliant", ai_confidence=0.98, ai_recommendation="Lead and hazardous material threshold verified compliant.")
-        db.add_all([c1, c2, c3, c4])
+        m101 = db.query(Product).filter(Product.product_code == "M-101").first()
+        if m101:
+            c1 = Certificate(product_id=m101.id, certificate_number="IEC-60034-2024-098", standard="IEC 60034-1 Rotating Electrical Machines", expiry_date=datetime.utcnow() + timedelta(days=900), status="VALID", verification_status="Compliant", ai_confidence=0.99)
+            c2 = Certificate(product_id=m101.id, certificate_number="CE-LVD-2024-4412", standard="CE Low Voltage Directive 2014/35/EU", expiry_date=datetime.utcnow() + timedelta(days=450), status="VALID", verification_status="Compliant", ai_confidence=0.98)
+            db.add_all([c1, c2])
+            db.commit()
+
+        # 7. Compatibility records
+        print("Seeding Drivetrain Compatibility...")
+        gb100 = db.query(Product).filter(Product.product_code == "GB-100").first()
+        c105 = db.query(Product).filter(Product.product_code == "C-105").first()
+        if m101 and gb100:
+            comp1 = Compatibility(product_id=m101.id, compatible_product_id=gb100.id, relationship_type="COMPATIBLE_WITH", status="Compatible", compatibility_score=0.98, explanation="Standard helical coupling match.")
+            db.add(comp1)
+        if m101 and c105:
+            comp2 = Compatibility(product_id=m101.id, compatible_product_id=c105.id, relationship_type="REQUIRES", status="Incompatible", compatibility_score=0.45, explanation="Controller power rating undersized.")
+            db.add(comp2)
         db.commit()
 
-        print("Seeding Compatibility...")
-        comp1 = Compatibility(
-            product_id=p1.id,
-            compatible_product_id=p3.id,
-            relationship_type="REQUIRES",
-            status="Incompatible",
-            compatibility_score=0.45,
-            explanation="Controller ABC-100 is rated for 5.5 kW max output; motor upgraded to 7.5 kW causes thermal overload trip.",
-            affected_by_recent_change=True,
-            confidence=0.98,
-            verification_status="VERIFIED"
-        )
-        comp2 = Compatibility(
-            product_id=p1.id,
-            compatible_product_id=p2.id,
-            relationship_type="COMPATIBLE_WITH",
-            status="Compatible",
-            compatibility_score=0.98,
-            explanation="XYZ-450 7.5 kW delivers optimal torque curve for ABC-550 pump high-pressure hydraulic stage.",
-            affected_by_recent_change=False,
-            confidence=0.99,
-            verification_status="VERIFIED"
-        )
-        db.add_all([comp1, comp2])
-        db.commit()
-
-        print("Seeding Quotes...")
-        q1 = Quote(
-            quote_number="QT-2026-8941",
-            customer_name="Vikramaditya Singhania",
-            customer_email="v.singhania@jindalsteel.com",
-            company="Jindal Steel & Power Ltd.",
-            request_prompt="Require 10 units of 7.5 kW 415V IE3 industrial motors with 7-day urgent delivery to Angul Plant.",
-            status="Validated",
-            version="v1.0",
-            subtotal=425000.0,
-            tax=76500.0,
-            freight=8500.0,
-            total=510000.0,
-            currency="INR",
-            delivery_days=7,
-            valid_until="30 Days from Generation",
-            validation_notes=[
-                "Verified 7.5 kW 415V specifications against Siemens technical_spec_2026.pdf.",
-                "Warehouse inventory confirmed (Siemens Direct has 45 units in stock, required: 10).",
-                "Calculated 18% standard industrial equipment GST + heavy logistics freight."
-            ],
-            history=[
-                {"timestamp": "2026-08-18 10:15", "event": "RFQ ingested from Jindal Steel customer portal.", "by": "AI Quote Engine"},
-                {"timestamp": "2026-08-18 10:16", "event": "Technical specs matched with XYZ-450 v2.0 (100% parameter alignment).", "by": "System"},
-                {"timestamp": "2026-08-18 10:17", "event": "Initial quote draft v1.0 generated and validated.", "by": "Sales Operations"}
-            ]
-        )
-        db.add(q1)
-        db.commit()
-
-        qi1 = QuoteItem(
-            quote_id=q1.id,
-            product_id=p1.id,
-            supplier_id=s1.id,
-            product_model="XYZ-450-IE3",
-            description="Siemens 7.5 kW (10 HP) 415V 3-Phase 1460 RPM Foot-Mounted TEFC Induction Motor (Frame 132M)",
-            spec_summary="7.5 kW | 415 V | 1460 RPM | IP55 | IE3",
-            quantity=10,
-            unit_price=42500.0,
-            delivery_days=7,
-            subtotal=425000.0,
-            supplier_source="Siemens Industrial Direct (SUP-SIEMENS)"
-        )
-        db.add(qi1)
-        db.commit()
-
-        print("Database seeded successfully with realistic industrial records!")
+        print("Database dynamically seeded successfully!")
 
     except Exception as e:
         db.rollback()

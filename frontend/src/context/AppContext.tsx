@@ -26,6 +26,71 @@ import { initialQuotations } from '@/mock/quotes';
 import { initialSalesChatMessages, initialAskCatalogMessages } from '@/mock/aiChat';
 import { api } from '@/lib/api';
 
+function adaptProduct(backendProduct: any): Product {
+  if (!backendProduct) return backendProduct;
+
+  const bSpecs = backendProduct.specs || {};
+  const bPrevSpecs = backendProduct.previous_specs || {};
+
+  const mapSpecs = (s: any) => {
+    const getVal = (keys: string[]) => {
+      for (const k of keys) {
+        if (s[k] !== undefined) return s[k];
+        const lowerK = k.toLowerCase();
+        for (const sk in s) {
+          if (sk.toLowerCase() === lowerK) return s[sk];
+        }
+      }
+      return '';
+    };
+
+    return {
+      power: getVal(['Rated Output', 'power', 'Power', 'Input Power', 'powerRating', 'power_rating']),
+      voltage: getVal(['Rated Voltage', 'voltage', 'Voltage', 'Input Voltage']),
+      speed: getVal(['Synchronous Speed', 'speed', 'Speed', 'Input Speed']),
+      frequency: getVal(['Frequency', 'frequency']),
+      ipRating: getVal(['Protection Degree', 'ipRating', 'IP Rating', 'ip_rating', 'protectionRating']),
+      weight: getVal(['Gross Weight', 'weight', 'Weight']),
+      efficiency: getVal(['Full Load Efficiency', 'efficiency', 'Efficiency']),
+      mountType: getVal(['Mounting', 'mount', 'Mount', 'Mounting Type']),
+      frameSize: getVal(['Frame Size', 'frameSize']),
+      insulationClass: getVal(['Insulation Class', 'insulationClass']),
+      operatingTemp: getVal(['Operating Temp', 'temperature', 'Temp', 'temp']),
+      certifications: s.certifications || []
+    };
+  };
+
+  return {
+    id: String(backendProduct.id),
+    model: backendProduct.product_code || backendProduct.model || '',
+    name: backendProduct.name || '',
+    manufacturer: backendProduct.manufacturer || '',
+    category: backendProduct.category || '',
+    currentVersion: backendProduct.current_version || 'v1.0',
+    previousVersion: backendProduct.previous_version || '',
+    confidence: backendProduct.confidence || 0.95,
+    healthScore: backendProduct.health_score || 90,
+    status: (backendProduct.status || 'active').toLowerCase() as any,
+    imageUrl: backendProduct.image_url || '',
+    description: backendProduct.description || '',
+    changesDetected: backendProduct.changes_count || 0,
+    impactsPending: backendProduct.pending_impacts_count || 0,
+    sourceDocumentIds: backendProduct.source_document_ids || [],
+    specs: mapSpecs(bSpecs),
+    previousSpecs: mapSpecs(bPrevSpecs),
+    versions: (backendProduct.versions || []).map((v: any) => ({
+      version: v.version_number || v.version || '',
+      releaseDate: v.effective_date || v.releaseDate || '',
+      specs: mapSpecs(v.specs || {}),
+      sourceDocId: String(v.source_document_id || ''),
+      sourceDocName: v.source_document_name || '',
+      verifiedBy: v.verified_by || '',
+      status: (v.status || 'verified').toLowerCase() as any
+    }))
+  };
+}
+
+
 export interface ToastNotification {
   id: string;
   type: 'success' | 'warning' | 'error' | 'info';
@@ -136,8 +201,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [catalogHealth, setCatalogHealth] = useState<CatalogHealthSummary>(initialCatalogHealth);
   const [catalogIssues, setCatalogIssues] = useState<CatalogIssue[]>(initialCatalogIssues);
   const [complianceRecords, setComplianceRecords] = useState<ComplianceRecord[]>(initialComplianceRecords);
-  const [compatibilityChecks] = useState<TechnicalCompatibilityCheck[]>(mockCompatibilityChecks);
-  const [supplierOffers] = useState<SupplierOffer[]>(mockSupplierOffers);
+  const [compatibilityChecks, setCompatibilityChecks] = useState<TechnicalCompatibilityCheck[]>(mockCompatibilityChecks);
+  const [supplierOffers, setSupplierOffers] = useState<SupplierOffer[]>(mockSupplierOffers);
   const [quotations, setQuotations] = useState<Quotation[]>(initialQuotations);
   const [activeQuote, setActiveQuote] = useState<Quotation>(initialQuotations[0]);
 
@@ -181,6 +246,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const loadBackendData = async () => {
       try {
+        // Load dynamic products from DB
+        const productsRes = await api.getProducts({ limit: 100 }).catch(() => null);
+        if (productsRes && Array.isArray(productsRes.items) && productsRes.items.length > 0) {
+          const adaptedProducts = productsRes.items.map(adaptProduct);
+          setProducts(adaptedProducts);
+          setActiveProduct(adaptedProducts[0]);
+        }
+
         // 1. Catalog Health
         const health = await api.getCatalogHealth().catch(() => null);
         if (health) {
@@ -253,6 +326,122 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     loadBackendData();
   }, []);
+
+  // Load dynamic data dependent on activeProduct
+  useEffect(() => {
+    if (!activeProduct || !activeProduct.id) return;
+    
+    // Parse to number for database primary key lookup
+    const numMatch = activeProduct.id.match(/\d+/);
+    const numId = numMatch ? parseInt(numMatch[0], 10) : null;
+    if (!numId) return;
+
+    const loadProductDetails = async () => {
+      try {
+        // 1. Fetch Compatibility checks
+        const compat = await api.getCompatibility(numId).catch(() => null);
+        if (compat && Array.isArray(compat)) {
+          setCompatibilityChecks(compat.map((r: any) => ({
+            id: String(r.id),
+            primaryProductId: String(r.product_id),
+            targetProductId: String(r.compatible_product_id),
+            primaryName: r.primary_name || 'XYZ-450',
+            targetName: r.target_name || '',
+            targetCategory: r.target_category || '',
+            status: r.status as any,
+            compatibilityScore: r.compatibility_score || 1.0,
+            checks: (r.checks || []).map((c: any) => ({
+              parameter: c.parameter,
+              primaryValue: c.primaryValue,
+              targetValue: c.targetValue,
+              passed: c.passed !== undefined ? c.passed : c.status === 'PASS',
+              notes: c.explanation || ''
+            })),
+            explanation: r.explanation || '',
+            affectedByRecentChange: r.affected_by_recent_change || false,
+            relationshipChain: [r.primary_name || 'XYZ-450', r.target_name || '']
+          })));
+        }
+
+        // 2. Fetch Supplier Offers
+        const offers = await api.getSupplierProducts({ product_id: numId }).catch(() => null);
+        if (offers && Array.isArray(offers)) {
+          setSupplierOffers(offers.map((sp: any) => ({
+            id: String(sp.id),
+            supplierName: sp.supplier_name,
+            productModel: sp.product_model,
+            power: sp.power,
+            voltage: sp.voltage,
+            ipRating: sp.ip_rating,
+            speed: sp.speed,
+            priceINR: sp.price,
+            priceUSD: Math.round(sp.price / 83.5),
+            stockQty: sp.stock_quantity,
+            deliveryDays: sp.delivery_days,
+            technicalMatchScore: sp.technical_match_score || 1.0,
+            isExactMatch: sp.is_exact_match === 'Exact Match',
+            status: sp.is_exact_match as any,
+            violations: sp.violations || [],
+            advantageNotes: sp.advantage_notes || '',
+            tier: sp.tier as any,
+            rating: sp.rating || 4.5
+          })));
+        }
+
+        // 3. Fetch Product changes
+        const changes = await api.getProductChanges(numId).catch(() => null);
+        if (changes && Array.isArray(changes)) {
+          setProductChanges(changes.map((c: any) => ({
+            id: String(c.id),
+            productId: String(c.product_id),
+            productName: c.product_name,
+            attribute: c.attribute_name,
+            oldValue: c.old_value,
+            newValue: c.new_value,
+            detectedAt: c.detected_at,
+            sourceDocument: c.source_document,
+            confidence: c.confidence,
+            status: c.status.toLowerCase() as any
+          })));
+        }
+
+        // 4. Fetch Product documents
+        const docs = await api.getProductDocuments(numId).catch(() => null);
+        if (docs && Array.isArray(docs)) {
+          setDocuments(docs.map((d: any) => {
+            const mapDocType = (t: string) => {
+              if (t === 'DATASHEET') return 'Datasheet';
+              if (t === 'CERTIFICATE') return 'Certificate';
+              if (t === 'CATALOG') return 'Supplier Catalog';
+              if (t === 'MANUAL') return 'Manual';
+              return 'Datasheet';
+            };
+            return {
+              id: String(d.id),
+              filename: d.original_file_name,
+              productId: String(d.product_id),
+              productModel: d.product_model || '',
+              documentType: mapDocType(d.document_type) as any,
+              uploadedOn: new Date(d.uploaded_at).toLocaleDateString(),
+              fileSize: d.file_size_formatted || '3.2 MB',
+              version: d.version_detected || 'v1.0',
+              status: d.processing_status === 'PROCESSED' ? 'Processed' : (d.processing_status === 'REVIEW_REQUIRED' ? 'Action Required' : 'Processing'),
+              matchConfidence: d.match_confidence || 1.0,
+              isSameProductDetected: d.product_id !== null,
+              detectedChangesSummary: d.extracted_summary || '',
+              pagesCount: d.pages_count || 1,
+              extractedAttributes: d.extracted_attributes || {},
+              sourceCitations: d.source_citations || []
+            };
+          }));
+        }
+      } catch (err) {
+        console.error('Error loading product details:', err);
+      }
+    };
+    loadProductDetails();
+  }, [activeProduct?.id]);
+
 
   // Toast Helper
   const showToast = (toast: Omit<ToastNotification, 'id'>) => {
@@ -413,30 +602,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Synchronization Approval
-  const approveSynchronization = (notes?: string) => {
-    setSyncStatus('synchronized');
-    setProducts(prev => prev.map(p => {
-      if (p.id === 'prod-xyz-450') {
-        return {
-          ...p,
-          status: 'synchronized',
-          changesDetected: 0,
-          impactsPending: 0,
-          healthScore: 98
-        };
-      }
-      return p;
-    }));
+  const approveSynchronization = async (notes?: string) => {
+    try {
+      const numMatch = activeProduct.id.match(/\d+/);
+      const numId = numMatch ? parseInt(numMatch[0], 10) : null;
+      if (!numId) return;
 
-    showToast({
-      type: 'success',
-      title: 'Synchronization Approved',
-      message: 'XYZ-450 v2.0 master product record verified and published to unified data layer.'
-    });
+      const res = await api.approveProductSync(numId);
+      if (res && res.success) {
+        setSyncStatus('synchronized');
+        
+        // Reload products from backend
+        const productsRes = await api.getProducts({ limit: 100 }).catch(() => null);
+        if (productsRes && Array.isArray(productsRes.items)) {
+          const adaptedProducts = productsRes.items.map(adaptProduct);
+          setProducts(adaptedProducts);
+          const updatedActive = adaptedProducts.find(p => p.id === activeProduct.id);
+          if (updatedActive) {
+            setActiveProduct(updatedActive);
+          }
+        }
+        
+        showToast({
+          type: 'success',
+          title: 'Synchronization Approved',
+          message: res.message || 'Product master record updated successfully in database.'
+        });
+      }
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Approval Failed',
+        message: err.message || 'Error communicating with database.'
+      });
+    }
   };
 
   // E-commerce Website Update Approval
   const approveEcommerceUpdate = async () => {
+    // Look up unreviewed e-commerce impacts for the active product
+    const unreviewedEcomImpacts = changeImpacts.filter(
+      i => !i.reviewed && (i.productId === activeProduct.id || i.productId === `prod-${activeProduct.model.toLowerCase()}`) && (i.domain === 'E-commerce' || i.impactType === 'E-commerce')
+    );
+    if (unreviewedEcomImpacts.length > 0) {
+      showToast({
+        type: 'error',
+        title: 'Website Update Blocked',
+        message: 'Review all required change impacts before approving the website update.'
+      });
+      return;
+    }
+
     setEcommerceStatus('syncing');
     try {
       const res = await api.syncEcommerceCatalog(activeProduct.id);
@@ -460,8 +676,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setEcommerceStatus('ready_to_publish');
       showToast({
         type: 'error',
-        title: 'Website Update Failed',
-        message: err.message || 'Error connecting to integration server'
+        title: 'Integration Service Error',
+        message: err.message || 'The storefront update service failed or is unreachable.'
       });
     }
   };

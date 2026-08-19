@@ -22,6 +22,8 @@ class DocumentUploadResponse(BaseModel):
     is_same_product_detected: Optional[bool] = True
     uploaded_at: datetime
     message: str = "Document uploaded successfully"
+    is_ambiguous: Optional[bool] = False
+    possible_matches: Optional[List[Dict[str, Any]]] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,6 +49,8 @@ class DocumentResponse(BaseModel):
     extracted_attributes: Optional[Dict[str, str]] = {}
     source_citations: Optional[List[Dict[str, Any]]] = []
     created_at: datetime
+    is_ambiguous: Optional[bool] = False
+    possible_matches: Optional[List[Dict[str, Any]]] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -55,3 +59,4 @@ class DocumentListResponse(BaseModel):
     page: int
     limit: int
     items: List[DocumentResponse]
+
