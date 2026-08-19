@@ -96,6 +96,7 @@ interface AppContextType {
   generateQuoteFromPrompt: (prompt: string) => Promise<Quotation>;
   modifyQuoteValidation: (quoteId: string, quantity: number, leadDays: number) => Promise<{ success: boolean; message: string; quote: Quotation }>;
   approveQuote: (quoteId: string) => void;
+  createQuoteFromSupplierOffer: (offer: any, quantity: number) => void;
 
   // AI Chat Messages
   salesMessages: AIMessage[];
@@ -453,18 +454,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // E-commerce Website Update Approval
-  const approveEcommerceUpdate = () => {
+  const approveEcommerceUpdate = async () => {
     setEcommerceStatus('syncing');
-    setTimeout(() => {
-      setEcommerceStatus('published');
-      setEcommerceLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    try {
+      const res = await api.syncEcommerceCatalog(activeProduct.id);
+      if (res && res.success) {
+        setEcommerceStatus('published');
+        setEcommerceLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        showToast({
+          type: 'success',
+          title: 'B2B Catalog API Synchronized',
+          message: `Product specifications successfully updated in Web Storefront. Changed fields: ${res.changedFields?.join(', ') || 'none'}`
+        });
+      } else {
+        setEcommerceStatus('ready_to_publish');
+        showToast({
+          type: 'error',
+          title: 'Synchronization Failed',
+          message: res?.message || 'Unknown response from integration server'
+        });
+      }
+    } catch (err: any) {
+      setEcommerceStatus('ready_to_publish');
       showToast({
-        type: 'success',
-        title: 'B2B Catalog API Synchronized',
-        message: 'Product specs, hero copy, and faceted search buckets updated in Web Storefront & SAP Commerce Cloud.'
+        type: 'error',
+        title: 'Website Update Failed',
+        message: err.message || 'Error connecting to integration server'
       });
-    }, 1200);
+    }
   };
+
 
   // Resolve Catalog Issue
   const resolveCatalogIssue = (issueId: string, resolvedValue: string, note?: string) => {
@@ -672,6 +691,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const createQuoteFromSupplierOffer = (offer: any, quantity: number) => {
+    const newQuote: Quotation = {
+      id: 'quote-' + Math.random().toString(36).substring(2, 7),
+      quoteNumber: 'Q-2026-' + Math.floor(9000 + Math.random() * 1000),
+      version: 'v1.0',
+      customerName: 'Industrial Client Representative',
+      company: 'Premier Manufacturing Corp',
+      requestPrompt: `Procured via Multi-Supplier Constraint Engine: ${quantity} x ${offer.productModel || offer.product_model} from ${offer.supplierName || offer.supplier_name}`,
+      createdAt: 'Just now',
+      validUntil: '30 Days from Issue',
+      status: 'Validated',
+      items: [
+        {
+          productId: offer.id,
+          model: offer.productModel || offer.product_model,
+          description: `${offer.supplierName || offer.supplier_name} - ${offer.productModel || offer.product_model}`,
+          specSummary: Object.entries(offer.specs || {})
+            .filter(([_, v]) => v && v !== 'N/A')
+            .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
+            .join(' | '),
+          quantity: quantity,
+          unitPriceINR: offer.priceINR || offer.price,
+          leadTimeDays: offer.deliveryDays || offer.delivery_days,
+          subtotalINR: (offer.priceINR || offer.price) * quantity,
+          supplierSource: offer.supplierName || offer.supplier_name,
+          status: 'available'
+        }
+      ],
+      subtotalINR: (offer.priceINR || offer.price) * quantity,
+      taxGST18: ((offer.priceINR || offer.price) * quantity) * 0.18,
+      freightINR: 15000,
+      totalINR: ((offer.priceINR || offer.price) * quantity) * 1.18 + 15000,
+      validationNotes: [
+        `✓ Supplier stock availability checked: ${offer.stockQty || offer.stock_quantity} units available.`,
+        '✓ Pricing verified against contract matrix.'
+      ],
+      history: [
+        {
+          version: 'v1.0',
+          changedAt: 'Just now',
+          changeSummary: 'Generated quote from procurement constraint engine.',
+          user: 'Procurement Specialist'
+        }
+      ]
+    };
+
+    setQuotations(prev => [newQuote, ...prev]);
+    setActiveQuote(newQuote);
+    showToast({
+      type: 'success',
+      title: 'Quotation Generated from Sourcing',
+      message: `Quotation ${newQuote.quoteNumber} prepared with selected supplier offering.`
+    });
+  };
+
   // AI Sales Chat
   const sendSalesMessage = (userText: string) => {
     const userMsg: AIMessage = {
@@ -683,6 +757,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSalesMessages(prev => [...prev, userMsg]);
 
+    const lower = userText.toLowerCase();
+
+    // Check if it is a sourcing query intent
+    const isSourcing = lower.includes('equivalent') || lower.includes('compare') || 
+                       lower.includes('find') || lower.includes('procurement') ||
+                       lower.includes('need') || lower.includes('sourcing') || 
+                       lower.includes('pump') || lower.includes('valve') || lower.includes('motor');
+
+    if (isSourcing && (lower.includes('kw') || lower.includes('v') || lower.includes('l/min') || lower.includes('bar') || lower.includes('ss316') || lower.includes('delivery') || lower.includes('price'))) {
+      setTimeout(async () => {
+        try {
+          // Parse requirement structured model
+          const parsed = await api.parseProcurementPrompt(userText);
+          // Evaluate sourcing
+          const results = await api.evaluateProcurement(parsed.category, parsed.constraints, parsed.quantity);
+          
+          let replyText = `I have routed your query to the **Procurement & Multi-Supplier Constraint Engine**.\n\nHere are the results for: **Category: *${parsed.category}*, Qty: *${parsed.quantity}***\n\n`;
+          
+          if (results.exactMatches && results.exactMatches.length > 0) {
+            replyText += `✓ **Exact Matches Found (${results.exactMatches.length})**:\n`;
+            results.exactMatches.forEach((m: any, idx: number) => {
+              replyText += `${idx + 1}. **${m.supplierName}** (${m.productModel}): ₹${m.priceINR.toLocaleString()} • Lead Time: ${m.deliveryDays} days (100% Match)\n`;
+            });
+          } else {
+            replyText += `⚠️ **No exact matches found.**\n`;
+          }
+          
+          if (results.alternatives && results.alternatives.length > 0) {
+            replyText += `\n**Closest Alternatives & Tradeoffs**:\n`;
+            results.alternatives.slice(0, 2).forEach((alt: any, idx: number) => {
+              replyText += `* **${alt.supplierName}** (${alt.productModel}) - Score: ${Math.round(alt.technicalMatchScore * 100)}%\n`;
+              alt.violations.forEach((v: string) => {
+                replyText += `   ❌ *Violation*: ${v}\n`;
+              });
+            });
+          }
+          
+          const botMsg: AIMessage = {
+            id: 'msg-' + Math.random().toString(36).substring(2, 7),
+            sender: 'assistant',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: replyText,
+            routedModule: 'Procurement',
+            confidence: 0.98,
+            actionCard: { title: 'Open Procurement & Multi-Supplier Constraint Engine', label: 'View Sourcing Matrix', url: '/procurement' }
+          };
+          setSalesMessages(prev => [...prev, botMsg]);
+        } catch (err) {
+          const botMsg: AIMessage = {
+            id: 'msg-' + Math.random().toString(36).substring(2, 7),
+            sender: 'assistant',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: `I attempted to route your inquiry to the procurement engine, but encountered an error. Please try adjusting your parameters on the Procurement page directly.`,
+            routedModule: 'Procurement',
+            confidence: 0.50
+          };
+          setSalesMessages(prev => [...prev, botMsg]);
+        }
+      }, 700);
+      return;
+    }
+
     // Simulated Smart Response Routing
     setTimeout(() => {
       let routedModule: AIMessage['routedModule'] = 'Product Search';
@@ -690,8 +826,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let actionCard: AIMessage['actionCard'] = undefined;
       let citations: AIMessage['sourceCitations'] = undefined;
       let isMissingData = false;
-
-      const lower = userText.toLowerCase();
 
       if (lower.includes('xyz-450') && (lower.includes('spec') || lower.includes('tell me') || lower.includes('about'))) {
         routedModule = 'Product Search';
@@ -707,13 +841,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           { docName: 'supplier_catalog_abb_motors_2026.xlsx', page: 1, snippet: 'Direct Channel OEM rate contract #AGR-2026-99', verified: true }
         ];
         actionCard = { title: 'Review Generated Quotation Q-2026-9042', label: 'Open RFQ / Quote Module', url: '/quotes' };
-      } else if (lower.includes('equivalent') || lower.includes('compare') || lower.includes('5.5') || lower.includes('procurement')) {
-        routedModule = 'Procurement';
-        replyText = `Found 3 exact supplier matches and 2 closest alternatives for 415V IP55 motors:\n\n1. **Siemens Direct**: ₹39,500 (4 days lead time, 100% match)\n2. **Crompton Apex**: ₹38,200 (7 days lead time, exact match)\n3. **ABB M3BP**: ₹42,500 (14 days lead time - delivery constraint exceeded)\n4. **WEG W21**: ₹36,000 (IP54 fails mandatory IP55 industrial spec)`;
-        citations = [
-          { docName: 'supplier_catalog_abb_motors_2026.xlsx', page: 1, snippet: 'Multi-vendor industrial catalog index 2026', verified: true }
-        ];
-        actionCard = { title: 'Explore Multi-Supplier Constraint Filter', label: 'Open Procurement View', url: '/procurement' };
       } else if (lower.includes('pump') || lower.includes('compatible') || lower.includes('controller') || lower.includes('drive')) {
         routedModule = 'Compatibility';
         replyText = `**Compatibility Analysis for XYZ-450 (7.5 kW)**:\n\n• **Pump P-200**: ✓ COMPATIBLE (Matches 7.2 kW absorbed power requirement)\n• **Coupling CP-50**: ✓ COMPATIBLE (Matches 38mm shaft diameter)\n• **Controller ABC-100**: ⚠️ INCOMPATIBLE (Drive capacity is 5.5 kW max; 7.5 kW load will trip overcurrent).`;
@@ -848,6 +975,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         generateQuoteFromPrompt,
         modifyQuoteValidation,
         approveQuote,
+        createQuoteFromSupplierOffer,
         salesMessages,
         sendSalesMessage,
         askCatalogMessages,

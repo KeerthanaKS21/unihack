@@ -25,11 +25,20 @@ export default function EcommerceUpdatePage() {
     ecommerceStatus,
     ecommerceLastSyncTime,
     approveEcommerceUpdate,
-    unreviewedImpactsCount
+    unreviewedImpactsCount,
+    activeProduct,
+    products,
+    setActiveProduct
   } = useApp();
 
   const isPublished = ecommerceStatus === 'published';
   const isSyncing = ecommerceStatus === 'syncing';
+
+  // Extract keys dynamically from activeProduct specifications
+  const specKeys = Array.from(new Set([
+    ...Object.keys(activeProduct?.previousSpecs || {}),
+    ...Object.keys(activeProduct?.specs || {})
+  ]));
 
   return (
     <div className="space-y-6">
@@ -82,6 +91,32 @@ export default function EcommerceUpdatePage() {
         }
       />
 
+      {/* Product Selector Dropdown (Requirement #13) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-bold text-slate-900">Select Catalog Component</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Choose a catalog component to preview version differences and push approved specifications to the storefront.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <select
+            value={activeProduct?.id}
+            onChange={(e) => {
+              const selected = products.find(p => p.id === e.target.value);
+              if (selected) setActiveProduct(selected);
+            }}
+            className="px-3.5 py-2 bg-slate-50 hover:bg-slate-100/80 text-slate-800 text-xs font-bold rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-72"
+          >
+            {products.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.manufacturer} {p.model} ({p.name})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Architecture Disclaimer: API Driven Sync (Requirement #11) */}
       <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 shadow-md flex items-start gap-4">
         <div className="p-2.5 bg-blue-500/20 text-blue-400 border border-blue-400/30 rounded-xl shrink-0">
@@ -117,7 +152,7 @@ export default function EcommerceUpdatePage() {
                 Storefront Published & Live at {ecommerceLastSyncTime || 'Just now'}
               </h4>
               <p className="text-[11px] text-emerald-800">
-                Faceted search indexes rebuilt. SKU <code className="font-mono font-bold">SKU-MOT-XYZ450</code> now serves 7.5 kW spec.
+                Faceted search indexes rebuilt. SKU <code className="font-mono font-bold">SKU-MOT-{activeProduct.model}</code> now serves current specs.
               </p>
             </div>
           </div>
@@ -135,7 +170,7 @@ export default function EcommerceUpdatePage() {
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Current Live Storefront (Outdated v1.4)
+                Current Live Storefront (Outdated {activeProduct.previousVersion || 'v1.4'})
               </span>
             </div>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold border border-rose-200">
@@ -147,48 +182,44 @@ export default function EcommerceUpdatePage() {
             <div className="flex items-start gap-4">
               <div className="w-20 h-20 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 opacity-80">
                 <img
-                  src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80"
-                  alt="XYZ-450"
+                  src={activeProduct.imageUrl}
+                  alt={activeProduct.model}
                   className="w-full h-full object-cover grayscale-30"
                 />
               </div>
               <div>
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Siemens Industrial
+                  {activeProduct.manufacturer}
                 </span>
                 <h3 className="text-base font-bold text-slate-700">
-                  XYZ-450 3-Phase Induction Motor (5.5 kW)
+                  {activeProduct.model} - {activeProduct.name}
                 </h3>
                 <p className="text-xs text-slate-500 font-mono mt-0.5">
-                  SKU: SKU-MOT-XYZ450-LEGACY
+                  SKU: SKU-{activeProduct.model}-LEGACY
                 </p>
               </div>
             </div>
 
             {/* Spec Table */}
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs font-mono">
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500 font-sans">Rated Power:</span>
-                <span className="font-bold text-rose-700 line-through">5.5 kW (7.5 HP)</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500 font-sans">Full Load Speed:</span>
-                <span className="font-bold text-rose-700 line-through">1440 RPM</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500 font-sans">Weight:</span>
-                <span className="font-bold text-rose-700 line-through">42 kg</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500 font-sans">Efficiency:</span>
-                <span className="font-bold text-slate-700">89.6% (IE2 High)</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-500 font-sans">Faceted Search Filter:</span>
-                <span className="font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                  5.0 - 5.5 kW Motors
-                </span>
-              </div>
+              {specKeys.length > 0 ? (
+                specKeys.map(key => {
+                  const prevValue = activeProduct.previousSpecs?.[key as keyof typeof activeProduct.previousSpecs] || 'N/A';
+                  const currValue = activeProduct.specs?.[key as keyof typeof activeProduct.specs] || 'N/A';
+                  const isChanged = prevValue !== currValue;
+                  const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+                  return (
+                    <div key={key} className="flex justify-between py-1 border-b border-slate-200/60 last:border-0">
+                      <span className="text-slate-500 font-sans">{label}:</span>
+                      <span className={`font-bold ${isChanged ? 'text-rose-750 line-through' : 'text-slate-700'}`}>
+                        {prevValue}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-4 text-slate-400 font-sans">No specifications found.</div>
+              )}
             </div>
           </div>
 
@@ -203,7 +234,7 @@ export default function EcommerceUpdatePage() {
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-xs font-bold text-blue-950 uppercase tracking-wider">
-                Updated Storefront Payload Preview (v2.0 2026)
+                Updated Storefront Payload Preview ({activeProduct.currentVersion || 'v2.0'})
               </span>
             </div>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
@@ -215,54 +246,50 @@ export default function EcommerceUpdatePage() {
             <div className="flex items-start gap-4">
               <div className="w-20 h-20 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 ring-2 ring-blue-400">
                 <img
-                  src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80"
-                  alt="XYZ-450"
+                  src={activeProduct.imageUrl}
+                  alt={activeProduct.model}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div>
                 <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
-                  Siemens Industrial Automation
+                  {activeProduct.manufacturer}
                 </span>
                 <h3 className="text-base font-bold text-slate-900">
-                  XYZ-450 Premium 3-Phase Induction Motor (7.5 kW)
+                  {activeProduct.model} - {activeProduct.name}
                 </h3>
                 <p className="text-xs text-slate-500 font-mono mt-0.5">
-                  SKU: SKU-MOT-XYZ450-IE3
+                  SKU: SKU-{activeProduct.model}-UPDATED
                 </p>
               </div>
             </div>
 
             {/* Spec Table with highlighted changes */}
             <div className="p-3 bg-blue-50/40 rounded-xl border border-blue-200 space-y-2 text-xs font-mono">
-              <div className="flex justify-between py-1 border-b border-blue-100">
-                <span className="text-slate-600 font-sans">Rated Power:</span>
-                <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                  7.5 kW (10 HP) ✨
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-blue-100">
-                <span className="text-slate-600 font-sans">Full Load Speed:</span>
-                <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                  1460 RPM ✨
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-blue-100">
-                <span className="text-slate-600 font-sans">Weight:</span>
-                <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                  45 kg (Frame 132M) ✨
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-blue-100">
-                <span className="text-slate-600 font-sans">Efficiency:</span>
-                <span className="font-bold text-blue-800">91.2% (IE3 Premium Class)</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-600 font-sans">Faceted Search Filter:</span>
-                <span className="font-bold text-blue-800 bg-blue-100/70 px-1.5 py-0.5 rounded border border-blue-200">
-                  7.5 - 10 kW Motors
-                </span>
-              </div>
+              {specKeys.length > 0 ? (
+                specKeys.map(key => {
+                  const prevValue = activeProduct.previousSpecs?.[key as keyof typeof activeProduct.previousSpecs] || 'N/A';
+                  const currValue = activeProduct.specs?.[key as keyof typeof activeProduct.specs] || 'N/A';
+                  const isChanged = prevValue !== currValue;
+                  const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+                  return (
+                    <div key={key} className="flex justify-between py-1 border-b border-blue-100 last:border-0">
+                      <span className="text-slate-600 font-sans">{label}:</span>
+                      {isChanged ? (
+                        <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          {currValue} ✨
+                        </span>
+                      ) : (
+                        <span className="font-bold text-slate-800">
+                          {currValue}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-4 text-slate-400 font-sans">No specifications found.</div>
+              )}
             </div>
           </div>
 
@@ -270,7 +297,8 @@ export default function EcommerceUpdatePage() {
             <span>Payload ready for JSON-LD & GraphQL Sync</span>
             <button
               onClick={approveEcommerceUpdate}
-              className="text-xs font-bold text-blue-700 hover:text-blue-900 underline"
+              disabled={isSyncing}
+              className="text-xs font-bold text-blue-700 hover:text-blue-900 underline disabled:opacity-50"
             >
               Push Update Now →
             </button>
@@ -280,3 +308,4 @@ export default function EcommerceUpdatePage() {
     </div>
   );
 }
+
