@@ -372,20 +372,22 @@ export default function SynchronizationPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
-                  {availableProducts.length > 1 && <th className="py-3 px-4 w-1/6">Product Target</th>}
+                  <th className="py-3 px-4 w-1/4">Product Target (Code & Name)</th>
                   <th className="py-3 px-4 w-1/4">Specification Parameter</th>
-                  <th className="py-3 px-4 w-1/4 text-slate-500 bg-slate-50">
+                  <th className="py-3 px-4 w-1/5 text-slate-500 bg-slate-50">
                     Previous Baseline (v1.0)
                   </th>
-                  <th className="py-3 px-4 w-1/4 text-blue-900 bg-blue-50/70 border-l border-r border-blue-100">
+                  <th className="py-3 px-4 w-1/5 text-blue-900 bg-blue-50/70 border-l border-r border-blue-100">
                     Newly Ingested (v2.0)
                   </th>
-                  <th className="py-3 px-4 w-1/4">Delta Analysis & Impact Status</th>
+                  <th className="py-3 px-4 w-1/6">Delta Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {displayedRows.map((row: any, idx: number) => {
                   const isModified = row.change_type === 'MODIFIED' || row.change_type === 'ADDED';
+                  const prodCode = row.product_code || versionDiff?.product_code || 'CATALOG';
+                  const prodName = row.product_name || versionDiff?.product_name || `${prodCode} Industrial Equipment`;
                   return (
                     <tr
                       key={idx}
@@ -393,11 +395,19 @@ export default function SynchronizationPage() {
                         isModified ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/60'
                       }`}
                     >
-                      {availableProducts.length > 1 && (
-                        <td className="py-3.5 px-4 font-mono font-bold text-blue-800">
-                          {row.product_code || '-'}
-                        </td>
-                      )}
+                      {/* Product Target */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono font-bold text-[11px] text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 w-fit">
+                            {prodCode}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-900 mt-0.5 line-clamp-1">
+                            {prodName}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Specification Parameter */}
                       <td className="py-3.5 px-4 font-bold text-slate-800 capitalize">
                         {row.attribute_name.replace(/_/g, ' ')}
                       </td>
@@ -431,10 +441,13 @@ export default function SynchronizationPage() {
                         </div>
                       </td>
 
-                      {/* Note */}
+                      {/* Delta Status & Action */}
                       <td className="py-3.5 px-4">
-                        <span className="text-slate-600 font-medium">
-                          {isModified ? 'Specification Delta Detected (Review required)' : 'Verified Canonical Equivalence'}
+                        <span className={`text-xs font-bold flex items-center gap-1.5 ${
+                          isModified ? 'text-amber-700' : 'text-emerald-700'
+                        }`}>
+                          {isModified ? <AlertTriangle className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                          <span>{isModified ? 'Review Required' : 'In Sync'}</span>
                         </span>
                       </td>
                     </tr>
