@@ -166,6 +166,7 @@ interface AppContextType {
   // AI Chat Messages
   salesMessages: AIMessage[];
   sendSalesMessage: (userText: string) => void;
+  clearSalesMessages: () => void;
   askCatalogMessages: AIMessage[];
   sendAskCatalogMessage: (userText: string) => void;
 
@@ -272,21 +273,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // 2. Change Impacts from DB
         const impacts = await api.getChangeImpacts().catch(() => null);
-        if (impacts && Array.isArray(impacts) && impacts.length > 0) {
-          setChangeImpacts(prev => prev.map(imp => {
-            const numMatch = imp.id.match(/\d+/);
-            const numId = numMatch ? parseInt(numMatch[0], 10) : null;
-            const dbImp = numId ? impacts.find(i => i.id === numId) : null;
-            if (dbImp) {
-              return {
-                ...imp,
-                reviewed: dbImp.reviewed,
-                reviewedAt: dbImp.reviewed_at ? new Date(dbImp.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : imp.reviewedAt,
-                reviewedBy: dbImp.reviewed_by || imp.reviewedBy,
-              };
-            }
-            return imp;
-          }));
+        if (impacts && Array.isArray(impacts)) {
+          setChangeImpacts(impacts.map((i: any) => ({
+            id: `imp-${i.id}`,
+            productId: `prod-${i.product_id || 'vtx-550'}`,
+            productName: i.product_name || 'Industrial Equipment',
+            changeDescription: i.change_description || '',
+            domain: (i.domain || i.impact_type || 'Operations') as any,
+            title: i.title,
+            explanation: i.description,
+            contextEvidence: i.context_evidence || 'Traceable from uploaded engineering revision.',
+            severity: (i.severity || 'medium') as any,
+            reviewed: Boolean(i.reviewed),
+            reviewedAt: i.reviewed_at ? new Date(i.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+            reviewedBy: i.reviewed_by,
+            targetModuleUrl: i.target_module_url || '/compatibility'
+          })));
+        }
+
+        // 2b. Changes from DB
+        const changes = await api.getChanges().catch(() => null);
+        if (changes && Array.isArray(changes)) {
+          setProductChanges(changes.map((c: any) => ({
+            id: `chg-${c.id}`,
+            productId: `prod-${c.product_id}`,
+            productName: c.product_name,
+            attribute: c.attribute_name,
+            oldValue: c.old_value || '-',
+            newValue: c.new_value,
+            detectedAt: c.detected_at || 'Just now',
+            sourceDocument: c.source_document || 'Uploaded document',
+            confidence: c.confidence || 0.98,
+            status: (c.status || 'pending').toLowerCase() as any
+          })));
         }
 
         // 3. Catalog Issues from DB
@@ -889,6 +908,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  // AI Sales Chat Session ID
+  const [salesConversationId] = useState<string>(() => 'conv-' + Math.random().toString(36).substring(2, 9));
+
+  const clearSalesMessages = () => {
+    setSalesMessages([]);
+    showToast({
+      type: 'info',
+      title: 'Conversation Reset',
+      message: 'Sales Assistant session cleared.'
+    });
+  };
+
   const createQuoteFromSupplierOffer = (offer: any, quantity: number) => {
     const newQuote: Quotation = {
       id: 'quote-' + Math.random().toString(36).substring(2, 7),
@@ -955,132 +986,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSalesMessages(prev => [...prev, userMsg]);
 
-    const lower = userText.toLowerCase();
+    const loadingId = 'loading-' + Math.random().toString(36).substring(2, 7);
+    const loadingMsg: AIMessage = {
+      id: loadingId,
+      sender: 'assistant',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: 'Checking verified databases and comparing supplier specifications...',
+      routedModule: undefined
+    };
+    setSalesMessages(prev => [...prev, loadingMsg]);
 
-    // Check if it is a sourcing query intent
-    const isSourcing = lower.includes('equivalent') || lower.includes('compare') || 
-                       lower.includes('find') || lower.includes('procurement') ||
-                       lower.includes('need') || lower.includes('sourcing') || 
-                       lower.includes('pump') || lower.includes('valve') || lower.includes('motor');
+    api.postSalesAssistantChat(userText, salesConversationId)
+      .then(res => {
+        setSalesMessages(prev => {
+          const filtered = prev.filter(m => m.id !== loadingId);
+          
+          let moduleLabel: AIMessage['routedModule'] = 'Product Search';
+          const intentUpper = (res.intent || '').toUpperCase();
+          if (intentUpper === 'PRODUCT_SEARCH') moduleLabel = 'Product Search';
+          else if (intentUpper === 'PROCUREMENT') moduleLabel = 'Procurement';
+          else if (intentUpper === 'QUOTATION') moduleLabel = 'Quotation';
+          else if (intentUpper === 'COMPATIBILITY') moduleLabel = 'Compatibility';
+          else if (intentUpper === 'COMPLIANCE') moduleLabel = 'Compliance';
+          else if (intentUpper === 'CHANGE_IMPACT') moduleLabel = 'Change Impact';
+          else if (intentUpper === 'GENERAL') moduleLabel = 'Catalog Exploration';
 
-    if (isSourcing && (lower.includes('kw') || lower.includes('v') || lower.includes('l/min') || lower.includes('bar') || lower.includes('ss316') || lower.includes('delivery') || lower.includes('price'))) {
-      setTimeout(async () => {
-        try {
-          // Parse requirement structured model
-          const parsed = await api.parseProcurementPrompt(userText);
-          // Evaluate sourcing
-          const results = await api.evaluateProcurement(parsed.category, parsed.constraints, parsed.quantity);
-          
-          let replyText = `I have routed your query to the **Procurement & Multi-Supplier Constraint Engine**.\n\nHere are the results for: **Category: *${parsed.category}*, Qty: *${parsed.quantity}***\n\n`;
-          
-          if (results.exactMatches && results.exactMatches.length > 0) {
-            replyText += `✓ **Exact Matches Found (${results.exactMatches.length})**:\n`;
-            results.exactMatches.forEach((m: any, idx: number) => {
-              replyText += `${idx + 1}. **${m.supplierName}** (${m.productModel}): ₹${m.priceINR.toLocaleString()} • Lead Time: ${m.deliveryDays} days (100% Match)\n`;
-            });
-          } else {
-            replyText += `⚠️ **No exact matches found.**\n`;
-          }
-          
-          if (results.alternatives && results.alternatives.length > 0) {
-            replyText += `\n**Closest Alternatives & Tradeoffs**:\n`;
-            results.alternatives.slice(0, 2).forEach((alt: any, idx: number) => {
-              replyText += `* **${alt.supplierName}** (${alt.productModel}) - Score: ${Math.round(alt.technicalMatchScore * 100)}%\n`;
-              alt.violations.forEach((v: string) => {
-                replyText += `   ❌ *Violation*: ${v}\n`;
-              });
-            });
-          }
-          
+          // Normalize actions (can be array or single object)
+          const actionsArr = Array.isArray(res.actions) ? res.actions : res.actions ? [res.actions] : [];
+
           const botMsg: AIMessage = {
             id: 'msg-' + Math.random().toString(36).substring(2, 7),
             sender: 'assistant',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            text: replyText,
-            routedModule: 'Procurement',
-            confidence: 0.98,
-            actionCard: { title: 'Open Procurement & Multi-Supplier Constraint Engine', label: 'View Sourcing Matrix', url: '/procurement' }
+            text: res.answer,
+            routedModule: res.intent ? moduleLabel : undefined,
+            confidence: res.confidence,
+            sourceCitations: res.sources,
+            cardType: res.card_type,
+            cardData: res.card_data,
+            isMissingDataDemonstration: res.is_missing_data_demonstration,
+            actions: actionsArr,
+            actionCard: actionsArr.length > 0 ? actionsArr[0] : undefined
           };
-          setSalesMessages(prev => [...prev, botMsg]);
-        } catch (err) {
-          const botMsg: AIMessage = {
-            id: 'msg-' + Math.random().toString(36).substring(2, 7),
+          return [...filtered, botMsg];
+        });
+      })
+      .catch(err => {
+        setSalesMessages(prev => {
+          const filtered = prev.filter(m => m.id !== loadingId);
+          const errorMsg: AIMessage = {
+            id: 'msg-err-' + Math.random().toString(36).substring(2, 7),
             sender: 'assistant',
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            text: `I attempted to route your inquiry to the procurement engine, but encountered an error. Please try adjusting your parameters on the Procurement page directly.`,
-            routedModule: 'Procurement',
-            confidence: 0.50
+            text: `Unable to connect to the Sales Assistant service. Please check your backend connection.`
           };
-          setSalesMessages(prev => [...prev, botMsg]);
-        }
-      }, 700);
-      return;
-    }
-
-    // Simulated Smart Response Routing
-    setTimeout(() => {
-      let routedModule: AIMessage['routedModule'] = 'Product Search';
-      let replyText = '';
-      let actionCard: AIMessage['actionCard'] = undefined;
-      let citations: AIMessage['sourceCitations'] = undefined;
-      let isMissingData = false;
-
-      if (lower.includes('xyz-450') && (lower.includes('spec') || lower.includes('tell me') || lower.includes('about'))) {
-        routedModule = 'Product Search';
-        replyText = `**XYZ-450 Industrial Motor (Siemens)**:\n\n• **Power**: 7.5 kW (Upgraded from 5.5 kW in v2.0)\n• **Voltage**: 415 V (3-Phase 50 Hz)\n• **Speed**: 1460 RPM\n• **Enclosure**: IP55 Cast Iron TEFC\n• **Efficiency**: 91.2% (IE3 Premium)\n\nAll specifications are verified from ingested engineering datasheets.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'XYZ-450 7.5 kW 415V 1460 RPM specifications', verified: true }
-        ];
-        actionCard = { title: 'Inspect Master Product Specifications', label: 'View XYZ-450', url: '/synchronization' };
-      } else if (lower.includes('quote') || lower.includes('prepare') || lower.includes('pricing') || lower.includes('20')) {
-        routedModule = 'Quotation';
-        replyText = `I have drafted an automated quotation for 20 units of **XYZ-450-IE3** at ₹39,500/unit (Subtotal: ₹790,000 + GST & Freight). Stock of 45 units is confirmed with 4-day dispatch.`;
-        citations = [
-          { docName: 'supplier_catalog_abb_motors_2026.xlsx', page: 1, snippet: 'Direct Channel OEM rate contract #AGR-2026-99', verified: true }
-        ];
-        actionCard = { title: 'Review Generated Quotation Q-2026-9042', label: 'Open RFQ / Quote Module', url: '/quotes' };
-      } else if (lower.includes('pump') || lower.includes('compatible') || lower.includes('controller') || lower.includes('drive')) {
-        routedModule = 'Compatibility';
-        replyText = `**Compatibility Analysis for XYZ-450 (7.5 kW)**:\n\n• **Pump P-200**: ✓ COMPATIBLE (Matches 7.2 kW absorbed power requirement)\n• **Coupling CP-50**: ✓ COMPATIBLE (Matches 38mm shaft diameter)\n• **Controller ABC-100**: ⚠️ INCOMPATIBLE (Drive capacity is 5.5 kW max; 7.5 kW load will trip overcurrent).`;
-        citations = [
-          { docName: 'kirloskar_p200_pump_manual.pdf', page: 2, snippet: 'Pump power requirement 7.5 kW at 1450 RPM', verified: true },
-          { docName: 'schneider_atv_drives_v3.pdf', page: 3, snippet: 'Max motor power capacity 5.5 kW', verified: true }
-        ];
-        actionCard = { title: 'Inspect Multi-Node Compatibility Graph', label: 'Open Compatibility Module', url: '/compatibility' };
-      } else if (lower.includes('changed') || lower.includes('difference') || lower.includes('history')) {
-        routedModule = 'Change Impact';
-        replyText = `**Changes detected between v1.4 and v2.0 for XYZ-450**:\n\n1. **Power**: 5.5 kW → 7.5 kW (+36.4% upgrade)\n2. **Speed**: 1440 RPM → 1460 RPM (+20 RPM)\n3. **Weight**: 42 kg → 45 kg (+3 kg frame expansion)\n\n4 cross-domain operational impacts are flagged for engineering review.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Revision delta summary v1.4 to v2.0', verified: true }
-        ];
-        actionCard = { title: 'Review Cross-Domain Change Impacts', label: 'Open Change Impact View', url: '/change-impact' };
-      } else if (lower.includes('noise') || lower.includes('dba') || lower.includes('sound') || lower.includes('decibel')) {
-        routedModule = 'Product Search';
-        isMissingData = true;
-        replyText = `I don't have verified acoustic noise level (dBA) data for XYZ-450 in the ingested company documents (tested against \`technical_spec_2026.pdf\` and \`motor_specs.pdf\`).\n\n*Under our strict enterprise zero-hallucination policy, unverified technical values cannot be fabricated.* Please upload the OEM acoustic test certificate to ingest this attribute.`;
-        actionCard = { title: 'Upload Acoustic Test Certificate', label: 'Open Upload & Ingest', url: '/upload' };
-      } else {
-        routedModule = 'Product Search';
-        replyText = `Query processed across verified enterprise product intelligence data. XYZ-450 7.5 kW is the current active reference standard. All electrical and mechanical parameters are grounded in certified engineering documentation.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Master product record index', verified: true }
-        ];
-      }
-
-      const botMsg: AIMessage = {
-        id: 'msg-' + Math.random().toString(36).substring(2, 7),
-        sender: 'assistant',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: replyText,
-        routedModule,
-        confidence: isMissingData ? 0.0 : 0.98,
-        sourceCitations: citations,
-        isMissingDataDemonstration: isMissingData,
-        actionCard
-      };
-
-      setSalesMessages(prev => [...prev, botMsg]);
-    }, 700);
+          return [...filtered, errorMsg];
+        });
+      });
   };
 
   // Ask Catalog AI Chat
@@ -1176,6 +1138,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createQuoteFromSupplierOffer,
         salesMessages,
         sendSalesMessage,
+        clearSalesMessages,
         askCatalogMessages,
         sendAskCatalogMessage,
         viewingProduct,

@@ -20,6 +20,7 @@ class ChangeCreate(ChangeBase):
 class ChangeResponse(ChangeBase):
     id: int
     created_at: datetime
+    product_code: Optional[str] = None
     product_name: Optional[str] = None
     detected_at: Optional[str] = None
 

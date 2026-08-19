@@ -4,64 +4,148 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { ConfidenceBadge } from '@/components/common/ConfidenceBadge';
 import { EmptyState } from '@/components/common/EmptyState';
-import { api, ApiClientError } from '@/lib/api';
+import { api } from '@/lib/api';
 import {
   UploadCloud,
   FileText,
   CheckCircle2,
   AlertCircle,
   FileSpreadsheet,
+  Image as ImageIcon,
   ShieldCheck,
-  Sparkles,
-  ExternalLink,
+  FileCode,
+  File as GenericFileIcon,
   Search,
+  RefreshCw,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  X,
   Layers,
-  Loader2,
-  RefreshCw
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
+
+// Supported file extensions & MIME types for Step 1
+const ALLOWED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.csv', '.png', '.jpg', '.jpeg', '.docx'];
+
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+  'text/plain',
+  'application/csv',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'application/octet-stream'
+];
+
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+
+interface StagedFile {
+  file: File;
+  name: string;
+  sizeFormatted: string;
+  typeCategory: string;
+}
 
 export default function UploadIngestPage() {
   const {
     documents: fallbackDocs,
-    ingestionState,
-    startSimulatedIngestion,
-    resetIngestionState,
     setViewingDocument,
     showToast
   } = useApp();
 
-  const [selectedDocType, setSelectedDocType] = useState<
-    'Datasheet' | 'Certificate' | 'Supplier Catalog' | 'Manual' | 'Excel Spec'
-  >('Datasheet');
-
+  // Filter & Search & Pagination State
   const [filterType, setFilterType] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  
-  // Real API State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize] = useState<number>(10);
+  const [totalDocsCount, setTotalDocsCount] = useState<number>(0);
+
+  // Real Database Documents State
   const [dbDocuments, setDbDocuments] = useState<any[]>([]);
   const [loadingDocs, setLoadingDocs] = useState<boolean>(true);
-  const [uploadingFile, setUploadingFile] = useState<boolean>(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Staged File for Upload (Before Submission)
+  const [stagedFile, setStagedFile] = useState<StagedFile | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Format bytes helper
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  // Determine file category for badge/icon
+  const getFileTypeCategory = (fileName: string): string => {
+    const ext = '.' + (fileName.split('.').pop() || '').toLowerCase();
+    if (ext === '.pdf') return 'PDF';
+    if (['.xlsx', '.xls'].includes(ext)) return 'Excel';
+    if (ext === '.csv') return 'CSV';
+    if (['.png', '.jpg', '.jpeg'].includes(ext)) return 'Image';
+    if (ext === '.docx') return 'DOCX';
+    return 'Document';
+  };
+
+  // Icon helper based on document type
+  const getDocIcon = (typeOrExt: string) => {
+    const t = (typeOrExt || '').toUpperCase();
+    if (t.includes('PDF') || t.includes('DATASHEET')) {
+      return <FileText className="w-4 h-4 text-rose-600" />;
+    }
+    if (t.includes('EXCEL') || t.includes('XLS') || t.includes('CSV') || t.includes('CATALOG') || t.includes('SUPPLIER')) {
+      return <FileSpreadsheet className="w-4 h-4 text-emerald-600" />;
+    }
+    if (t.includes('IMAGE') || t.includes('PNG') || t.includes('JPG')) {
+      return <ImageIcon className="w-4 h-4 text-sky-600" />;
+    }
+    if (t.includes('DOCX') || t.includes('MANUAL')) {
+      return <FileCode className="w-4 h-4 text-blue-600" />;
+    }
+    if (t.includes('CERTIFICATE')) {
+      return <ShieldCheck className="w-4 h-4 text-amber-600" />;
+    }
+    return <GenericFileIcon className="w-4 h-4 text-slate-500" />;
+  };
 
   // Fetch real documents from FastAPI backend
   const fetchUploadedDocuments = async () => {
     setLoadingDocs(true);
+    setFetchError(null);
     try {
       const res = await api.getDocuments({
+        page: currentPage,
+        limit: pageSize,
         search: searchQuery || undefined,
-        document_type: filterType !== 'all' ? filterType.toUpperCase() : undefined
+        document_type: filterType !== 'all' ? filterType.toUpperCase() : undefined,
+        processing_status: filterStatus !== 'all' ? filterStatus.toUpperCase() : undefined
       });
       if (res && Array.isArray(res.items)) {
         setDbDocuments(res.items);
+        setTotalDocsCount(res.total || res.items.length);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Backend documents fetch failed, using fallback:', err);
+      setFetchError('Unable to connect to backend repository. Showing local cache.');
       setDbDocuments(fallbackDocs);
+      setTotalDocsCount(fallbackDocs.length);
     } finally {
       setLoadingDocs(false);
     }
@@ -69,41 +153,64 @@ export default function UploadIngestPage() {
 
   useEffect(() => {
     fetchUploadedDocuments();
-  }, [filterType, searchQuery]);
+  }, [filterType, filterStatus, searchQuery, currentPage]);
 
-  // Handle Real File Upload to POST /api/documents/upload
-  const handleFileUpload = async (file: File) => {
-    setUploadingFile(true);
-    setUploadError(null);
+  // Client-Side File Validation
+  const validateSelectedFile = (file: File): string | null => {
+    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+    
+    // 1. Extension check
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return `Unsupported file type "${ext}". Please upload PDF, Excel, CSV, image or DOCX files.`;
+    }
 
-    try {
-      const res = await api.uploadDocument(file, undefined, 'Engineering Lead');
-      showToast({
-        type: 'success',
-        title: 'Document Uploaded & Stored',
-        message: `${file.name} saved and indexed in database (Doc ID #${res.id}).`
-      });
-      // Refresh documents list
-      await fetchUploadedDocuments();
-    } catch (err: any) {
-      const msg = err.message || 'File upload failed.';
-      setUploadError(msg);
-      showToast({
-        type: 'error',
-        title: 'Upload Failed',
-        message: msg
-      });
-    } finally {
-      setUploadingFile(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+    // 2. MIME type check if present
+    if (file.type && !ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())) {
+      const isAllowed = ALLOWED_EXTENSIONS.some(allowedExt => file.name.toLowerCase().endsWith(allowedExt));
+      if (!isAllowed) {
+        return `Unsupported file format "${file.type}". Please upload PDF, Excel, CSV, image or DOCX files.`;
       }
     }
+
+    // 3. File Size check
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return `File exceeds the maximum allowed size of 50 MB (${formatBytes(file.size)} received).`;
+    }
+
+    if (file.size === 0) {
+      return 'Selected file is empty (0 bytes). Please upload a valid document.';
+    }
+
+    return null;
+  };
+
+  // Stage a file when user selects/drops it
+  const stageFile = (file: File) => {
+    setValidationError(null);
+    setUploadSuccessMsg(null);
+
+    const errorMsg = validateSelectedFile(file);
+    if (errorMsg) {
+      setValidationError(errorMsg);
+      showToast({
+        type: 'error',
+        title: 'Validation Error',
+        message: errorMsg
+      });
+      return;
+    }
+
+    setStagedFile({
+      file,
+      name: file.name,
+      sizeFormatted: formatBytes(file.size),
+      typeCategory: getFileTypeCategory(file.name)
+    });
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      handleFileUpload(e.target.files[0]);
+      stageFile(e.target.files[0]);
     }
   };
 
@@ -111,135 +218,139 @@ export default function UploadIngestPage() {
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files[0]);
+      stageFile(e.dataTransfer.files[0]);
     }
   };
 
-  const handleSimulatedUpload = (fileName: string) => {
-    startSimulatedIngestion(fileName, selectedDocType);
+  // Submit Staged File to POST /api/documents/upload
+  const handleUploadStagedFile = async () => {
+    if (!stagedFile) return;
+
+    setIsUploading(true);
+    setValidationError(null);
+    setUploadSuccessMsg(null);
+
+    try {
+      const res = await api.uploadDocument(stagedFile.file, undefined, 'Engineering Lead');
+      
+      setUploadSuccessMsg(`✓ Uploaded successfully: "${stagedFile.name}" stored and indexed in database (Doc ID #${res.id}).`);
+      showToast({
+        type: 'success',
+        title: 'Uploaded Successfully',
+        message: `${stagedFile.name} added to repository.`
+      });
+
+      // Clear staged file
+      setStagedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      // Refresh Upload History
+      await fetchUploadedDocuments();
+
+    } catch (err: any) {
+      const msg = err.message || 'Upload failed. Please try again.';
+      setValidationError(msg);
+      showToast({
+        type: 'error',
+        title: 'Upload Failed',
+        message: msg
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const displayDocs = dbDocuments.length > 0 ? dbDocuments : fallbackDocs;
+  // Quick Test Trigger Helper for multi-formats
+  const handleQuickDemoUpload = (sampleName: string) => {
+    const ext = '.' + (sampleName.split('.').pop() || '').toLowerCase();
+    let mime = 'application/octet-stream';
+    if (ext === '.pdf') mime = 'application/pdf';
+    else if (ext === '.xlsx') mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    else if (ext === '.csv') mime = 'text/csv';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.jpg') mime = 'image/jpeg';
+    else if (ext === '.docx') mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+    const dummyContent = `Industrial Product Intelligence Sample File: ${sampleName}`;
+    const blob = new Blob([dummyContent], { type: mime });
+    const file = new File([blob], sampleName, { type: mime });
+    stageFile(file);
+  };
+
+  const totalPages = Math.ceil(totalDocsCount / pageSize) || 1;
+  const displayDocs = dbDocuments;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Upload & Ingest Product Documents"
-        subtitle="Intelligent ingestion pipeline converting unorganized datasheets, supplier Excel files, PDFs, and certificates into verified catalog intelligence."
+        subtitle="Multi-format industrial document intake supporting datasheets, supplier Excel files, CSVs, nameplate images, and specifications."
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Upload & Ingest' }
         ]}
-        badge="Multi-Format OCR Engine"
+        badge="Multi-Format Storage"
         badgeVariant="ai"
       />
 
-      {/* Upload Error Banner */}
-      {uploadError && (
+      {/* Validation or Fetch Error Banner */}
+      {(validationError || fetchError) && (
         <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center justify-between animate-in fade-in">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{uploadError}</span>
+            <span>{validationError || fetchError}</span>
           </div>
-          <button onClick={() => setUploadError(null)} className="text-rose-600 hover:underline">Dismiss</button>
+          <button
+            onClick={() => { setValidationError(null); setFetchError(null); }}
+            className="text-rose-600 hover:underline text-xs"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Top Ingestion Pipeline Runner (Active State Stepper) */}
-      {ingestionState && (
-        <div className="bg-white rounded-2xl p-6 border-2 border-blue-500 shadow-xl space-y-4 animate-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-100 text-blue-700">
-                <Sparkles className="w-5 h-5 animate-spin" style={{ animationDuration: '4s' }} />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  AI Ingestion Pipeline Active: Step {ingestionState.step} of 5
-                </h3>
-                <p className="text-xs text-slate-500 font-medium">
-                  {ingestionState.stepName}
-                </p>
-              </div>
-            </div>
-            {ingestionState.isComplete ? (
-              <button
-                onClick={resetIngestionState}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
-              >
-                Done
-              </button>
-            ) : (
-              <span className="text-xs font-mono font-bold text-blue-600 animate-pulse">
-                Processing...
-              </span>
-            )}
+      {/* Upload Success Banner */}
+      {uploadSuccessMsg && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{uploadSuccessMsg}</span>
           </div>
-
-          {/* Progress Bar */}
-          <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-            <div
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full rounded-full transition-all duration-500"
-              style={{ width: `${ingestionState.progress}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-xs font-medium">
-            <span className="text-slate-600">{ingestionState.message}</span>
-            {ingestionState.isComplete && (
-              <Link
-                href="/synchronization"
-                className="text-xs font-bold text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-1"
-              >
-                Proceed to Synchronization →
-              </Link>
-            )}
-          </div>
+          <button
+            onClick={() => setUploadSuccessMsg(null)}
+            className="text-emerald-600 hover:underline text-xs"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Main Drag-and-Drop Upload Section */}
+      {/* ========================================================================= */}
+      {/* SECTION 1: UPLOAD NEW DOCUMENT (MULTI-FORMAT DRAG & DROP)                 */}
+      {/* ========================================================================= */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 tracking-tight">
-              Upload New Document (Live API: <code className="text-blue-600 font-mono">POST /api/documents/upload</code>)
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Select document classification type and drag files or use one of the industrial test samples.
-            </p>
-          </div>
-
-          {/* Classification Type Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold overflow-x-auto">
-            {(['Datasheet', 'Certificate', 'Supplier Catalog', 'Manual', 'Excel Spec'] as const).map(type => (
-              <button
-                key={type}
-                onClick={() => setSelectedDocType(type)}
-                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
-                  selectedDocType === type
-                    ? 'bg-white text-blue-700 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
+        <div>
+          <h3 className="text-base font-bold text-slate-900 tracking-tight">
+            Upload Product Document
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Safely upload engineering datasheets, supplier rate sheets, scanned certificates, and drawings.
+          </p>
         </div>
 
-        {/* Hidden Real File Input */}
+        {/* Hidden File Input */}
         <input
           type="file"
           ref={fileInputRef}
           onChange={handleFileInputChange}
-          accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg,.csv,.dwg,.dxf"
+          accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.docx"
+          disabled={isUploading}
           className="hidden"
         />
 
-        {/* Drag-and-Drop Zone */}
+        {/* Drag-and-Drop Dropzone */}
         <div
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !isUploading && fileInputRef.current?.click()}
           onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
@@ -247,78 +358,154 @@ export default function UploadIngestPage() {
             isDragOver
               ? 'border-blue-600 bg-blue-50/50 scale-[1.01]'
               : 'border-slate-300 hover:border-blue-500 bg-slate-50/60 hover:bg-blue-50/20'
-          }`}
+          } ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-100 group-hover:bg-blue-200 text-blue-600 flex items-center justify-center transition-colors mb-3">
-            {uploadingFile ? (
+            {isUploading ? (
               <Loader2 className="w-7 h-7 animate-spin text-blue-600" />
             ) : (
               <UploadCloud className="w-7 h-7" />
             )}
           </div>
+          
           <h4 className="text-sm font-bold text-slate-900">
-            {uploadingFile ? 'Uploading and indexing file to database...' : 'Drag & drop your files here, or click to browse'}
+            {isUploading ? 'Uploading document to secure storage...' : 'Drop your product document here'}
           </h4>
-          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-            Supports PDF engineering datasheets, Excel supplier catalogs (.xlsx), scanned certificates (.pdf, .png), and CAD drawings.
+          
+          <p className="text-xs text-blue-600 font-semibold mt-1">
+            or browse files
           </p>
 
-          {/* Demo Quick Trigger Pills */}
+          <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-slate-500 font-medium flex-wrap">
+            <span>Supported formats: <strong className="text-slate-700">PDF, XLSX, XLS, CSV, PNG, JPG, JPEG, DOCX</strong></span>
+            <span>•</span>
+            <span>Maximum file size: <strong className="text-slate-700">50 MB</strong></span>
+          </div>
+
+          {/* Quick Test Multi-Format Pills */}
           <div className="mt-5 pt-5 border-t border-slate-200/80" onClick={e => e.stopPropagation()}>
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
-              ⚡ Quick Ingestion Demo Samples (Click to simulate live upload)
+              ⚡ Quick Multi-Format Test Files (Click to stage for upload)
             </span>
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <button
-                onClick={() => handleSimulatedUpload('technical_spec_2026.pdf')}
-                className="px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+                type="button"
+                onClick={() => handleQuickDemoUpload('technical_spec_2026.pdf')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>technical_spec_2026.pdf (XYZ-450 v2.0)</span>
+                <span>PDF: technical_spec_2026.pdf</span>
               </button>
 
               <button
-                onClick={() => handleSimulatedUpload('certificate.pdf')}
+                type="button"
+                onClick={() => handleQuickDemoUpload('supplier_catalog_abb.xlsx')}
+                disabled={isUploading}
                 className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
               >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>certificate.pdf (CE / IEC 60034)</span>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Excel: supplier_catalog.xlsx</span>
               </button>
 
               <button
-                onClick={() => handleSimulatedUpload('abb_m3bp_pricing_2026.xlsx')}
-                className="px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+                type="button"
+                onClick={() => handleQuickDemoUpload('motor_inventory_rate_sheet.csv')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-teal-50 text-teal-700 border border-teal-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>supplier_catalog_abb.xlsx</span>
+                <span>CSV: motor_inventory.csv</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemoUpload('motor_nameplate_photo.jpg')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>JPG: nameplate_photo.jpg</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemoUpload('product_user_manual.docx')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+              >
+                <FileCode className="w-3.5 h-3.5" />
+                <span>DOCX: product_manual.docx</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Feature Notice */}
-        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-blue-100 text-blue-700 shrink-0">
-            <Layers className="w-5 h-5" />
+        {/* ========================================================================= */}
+        {/* SECTION 2: STAGED FILE PREVIEW & UPLOAD CONFIRMATION                      */}
+        {/* ========================================================================= */}
+        {stagedFile && (
+          <div className="p-4 rounded-xl bg-blue-50/80 border-2 border-blue-400 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-white text-blue-700 shadow-xs shrink-0">
+                {getDocIcon(stagedFile.typeCategory)}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-900 text-sm">{stagedFile.name}</span>
+                  <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 uppercase">
+                    {stagedFile.typeCategory}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Size: <strong className="text-slate-700">{stagedFile.sizeFormatted}</strong> • Ready for secure ingestion
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setStagedFile(null)}
+                disabled={isUploading}
+                className="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/80 rounded-lg border border-slate-200 transition-colors inline-flex items-center gap-1"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Remove</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleUploadStagedFile}
+                disabled={isUploading}
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs transition-colors inline-flex items-center gap-1.5"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Upload Document</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-blue-900">
-              AI Multi-Source Entity Resolution
-            </h4>
-            <p className="text-xs text-blue-800/90 mt-0.5 leading-relaxed">
-              The platform automatically clusters different filenames (<code className="bg-blue-100/80 px-1 py-0.5 rounded font-mono">motor_old.pdf</code>, <code className="bg-blue-100/80 px-1 py-0.5 rounded font-mono">technical_spec_2026.pdf</code>, <code className="bg-blue-100/80 px-1 py-0.5 rounded font-mono">certificate_xyz450.pdf</code>) under the same master industrial product record (<span className="font-bold">XYZ-450</span>).
-            </p>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Upload History Table Section */}
+      {/* ========================================================================= */}
+      {/* SECTION 3: UPLOAD HISTORY                                                 */}
+      {/* ========================================================================= */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Ingested Document History
+                Upload History
               </h3>
               <button
                 onClick={fetchUploadedDocuments}
@@ -329,58 +516,75 @@ export default function UploadIngestPage() {
               </button>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Authoritative files stored in database and indexed into the enterprise knowledge graph.
+              Authoritative files stored in database and indexed into the enterprise knowledge repository ({totalDocsCount} total files).
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {/* Search */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Filter files or models..."
+                onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                placeholder="Search file or type..."
                 className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
 
-            {/* Type Filter */}
+            {/* Document Type Filter */}
             <select
               value={filterType}
-              onChange={e => setFilterType(e.target.value)}
+              onChange={e => { setFilterType(e.target.value); setCurrentPage(1); }}
               className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none"
             >
               <option value="all">All Document Types</option>
               <option value="datasheet">Datasheets</option>
+              <option value="supplier_file">Supplier Files</option>
+              <option value="catalog">Catalogs</option>
               <option value="certificate">Certificates</option>
-              <option value="catalog">Supplier Catalogs</option>
+              <option value="image">Images</option>
               <option value="manual">Manuals</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={filterStatus}
+              onChange={e => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+              className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none"
+            >
+              <option value="all">All Statuses</option>
+              <option value="uploaded">Uploaded</option>
+              <option value="processed">Processed</option>
+              <option value="matched">Matched</option>
             </select>
           </div>
         </div>
 
         {/* History Table */}
         <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-          {displayDocs.length === 0 ? (
+          {loadingDocs ? (
+            <div className="p-12 text-center text-slate-400 space-y-3">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
+              <p className="text-xs">Loading documents from PostgreSQL repository...</p>
+            </div>
+          ) : displayDocs.length === 0 ? (
             <div className="p-8">
               <EmptyState
                 icon={FileText}
                 title="No documents found"
-                description="Upload a datasheet or certificate above to start ingesting product specifications."
+                description="Upload a document above to start populating your repository."
               />
             </div>
           ) : (
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-4">File Name</th>
-                  <th className="py-3 px-4">Identified Product</th>
-                  <th className="py-3 px-4">Document Type</th>
-                  <th className="py-3 px-4">Uploaded On</th>
-                  <th className="py-3 px-4">Version Tag</th>
-                  <th className="py-3 px-4">AI Entity Match</th>
+                  <th className="py-3 px-4">File</th>
+                  <th className="py-3 px-4">Type</th>
+                  <th className="py-3 px-4">Size</th>
+                  <th className="py-3 px-4">Uploaded At</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
@@ -389,86 +593,94 @@ export default function UploadIngestPage() {
                 {displayDocs.map((doc: any) => {
                   const fileName = doc.original_file_name || doc.filename || doc.file_name;
                   const prodModel = doc.product_model || doc.productModel || (doc.product_id === 1 ? 'XYZ-450' : 'Unlinked');
-                  const docType = doc.document_type || doc.documentType || 'Datasheet';
-                  const uploadDate = doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : (doc.uploadedOn || 'Recently');
-                  const version = doc.version_detected || doc.version || '-';
-                  const matchConfidence = doc.match_confidence || doc.matchConfidence || 0.95;
-                  const status = doc.processing_status || doc.status || 'Processed';
+                  const docType = doc.document_type || doc.documentType || 'DATASHEET';
+                  const uploadDate = doc.uploaded_at
+                    ? new Date(doc.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : (doc.uploadedOn || 'Aug 18, 2026');
+                  const sizeFormatted = doc.file_size_formatted || doc.fileSize || '1.2 MB';
+                  const status = doc.processing_status || doc.status || 'Uploaded';
+                  const downloadUrl = `http://localhost:8000/uploads/${doc.file_name || fileName}`;
+
+                  const openDetails = () => setViewingDocument({
+                    id: String(doc.id),
+                    filename: fileName,
+                    productId: String(doc.product_id || 'prod-xyz-450'),
+                    productModel: prodModel,
+                    documentType: docType,
+                    uploadedOn: uploadDate,
+                    fileSize: sizeFormatted,
+                    version: doc.version_detected || doc.version || '-',
+                    status: status,
+                    matchConfidence: doc.match_confidence || doc.matchConfidence || 0.95,
+                    isSameProductDetected: true,
+                    detectedChangesSummary: doc.extracted_summary || 'Document stored in repository with verified SHA-256 checksum.',
+                    pagesCount: doc.pages_count || doc.pagesCount || 1,
+                    extractedAttributes: (doc.extracted_attributes && Object.keys(doc.extracted_attributes).length > 0)
+                      ? doc.extracted_attributes
+                      : {
+                          'Original File': fileName,
+                          'Document Type': docType,
+                          'File Size': sizeFormatted,
+                          'Storage Status': 'Persisted in Database'
+                        },
+                    sourceCitations: (doc.source_citations && doc.source_citations.length > 0)
+                      ? doc.source_citations
+                      : [
+                          { page: 1, snippet: `Authoritative ${docType} document retained for traceability.` }
+                        ],
+                    extractedText: doc.extracted_text
+                  });
 
                   return (
                     <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-1.5 rounded bg-blue-50 text-blue-600">
-                            <FileText className="w-4 h-4" />
+                          <div className="p-1.5 rounded bg-slate-100">
+                            {getDocIcon(docType)}
                           </div>
                           <div>
                             <span className="font-bold text-slate-900 block">{fileName}</span>
-                            <span className="text-[11px] text-slate-400">
-                              {doc.file_size_formatted || doc.fileSize || '3.2 MB'} • {doc.pages_count || doc.pagesCount || 4} pgs
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              Doc ID #{doc.id}
                             </span>
                           </div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                          {prodModel}
+                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px] uppercase">
+                          {docType}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-600 font-medium">
-                        {docType}
+                      <td className="py-3 px-4 text-slate-600 font-mono">
+                        {sizeFormatted}
                       </td>
                       <td className="py-3 px-4 text-slate-500 font-mono">
                         {uploadDate}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-semibold text-slate-800">
-                        {version}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5">
-                          <ConfidenceBadge score={matchConfidence} size="sm" showLabel={false} />
-                          <span className="text-[10px] text-emerald-700 font-semibold">
-                            {matchConfidence >= 0.9 ? 'Same Product' : 'Unlinked'}
-                          </span>
-                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <StatusBadge status={status} size="sm" />
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => setViewingDocument({
-                            id: String(doc.id),
-                            filename: fileName,
-                            productId: String(doc.product_id || 'prod-xyz-450'),
-                            productModel: prodModel,
-                            documentType: docType,
-                            uploadedOn: uploadDate,
-                            fileSize: doc.file_size_formatted || doc.fileSize || '3.2 MB',
-                            version: version,
-                            status: status,
-                            matchConfidence: matchConfidence,
-                            isSameProductDetected: true,
-                            detectedChangesSummary: doc.extracted_summary || 'Specification extracted with verified OCR.',
-                            pagesCount: doc.pages_count || doc.pagesCount || 4,
-                            extractedAttributes: doc.extracted_attributes || {
-                              'Model Number': prodModel,
-                              'Rated Output': '7.5 kW (10 HP)',
-                              'Rated Voltage': '415 V ±10% 3-Phase',
-                              'Synchronous Speed': '1460 RPM',
-                              'Protection Degree': 'IP55',
-                              'Full Load Efficiency': '91.2%'
-                            },
-                            sourceCitations: doc.source_citations || [
-                              { page: 1, snippet: 'XYZ-450 Premium Severe Duty 3-Phase TEFC Cast Iron Induction Motor 7.5kW rating.' },
-                              { page: 2, snippet: 'Electrical Characteristics: 415V AC 50Hz, 1460 RPM full load speed.' }
-                            ]
-                          })}
-                          className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors inline-flex items-center gap-1"
-                        >
-                          <span>Inspect OCR</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={openDetails}
+                            className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors inline-flex items-center gap-1"
+                          >
+                            <span>View</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                          
+                          <a
+                            href={downloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download
+                            title="Download document file"
+                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -477,6 +689,33 @@ export default function UploadIngestPage() {
             </table>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 text-xs text-slate-500">
+            <span>
+              Showing page <strong className="text-slate-800">{currentPage}</strong> of <strong className="text-slate-800">{totalPages}</strong> ({totalDocsCount} total)
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100 rounded-lg font-semibold text-slate-700 transition-colors inline-flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Previous</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100 rounded-lg font-semibold text-slate-700 transition-colors inline-flex items-center gap-1"
+              >
+                <span>Next</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

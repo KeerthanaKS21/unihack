@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Float, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.database import Base
@@ -23,6 +23,10 @@ class Document(Base):
     match_confidence = Column(Float, default=1.0)
     pages_count = Column(Integer, default=1)
     extracted_summary = Column(Text, nullable=True)
+    extracted_attributes = Column(JSON, nullable=True)
+    source_citations = Column(JSON, nullable=True)
+    extracted_text = Column(Text, nullable=True)
+    extracted_product_data = Column(JSON, nullable=True)     # Standardized structured product data from LLM
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships

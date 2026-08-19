@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 
 class DocumentBase(BaseModel):
@@ -27,6 +27,32 @@ class DocumentUploadResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class ProductIdentity(BaseModel):
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    product_name: Optional[str] = None
+    product_type: Optional[str] = None
+    category: Optional[str] = None
+
+class ProductSpecificationItem(BaseModel):
+    attribute_name: str
+    value: Optional[Union[float, int, str, bool]] = None
+    unit: Optional[str] = None
+    raw_value: Optional[str] = None
+    source_text: Optional[str] = None
+    source: Optional[Dict[str, Any]] = None
+    model_confidence: Optional[float] = None
+
+class ProductExtractionResponse(BaseModel):
+    document_id: int
+    product: ProductIdentity
+    specifications: List[ProductSpecificationItem]
+    extracted_at: Optional[datetime] = None
+    source_format: Optional[str] = None
+    message: Optional[str] = "Product intelligence extracted successfully"
+
+    model_config = ConfigDict(from_attributes=True)
+
 class DocumentResponse(BaseModel):
     id: int
     file_name: str
@@ -46,8 +72,10 @@ class DocumentResponse(BaseModel):
     match_confidence: Optional[float] = 1.0
     pages_count: Optional[int] = 1
     extracted_summary: Optional[str] = None
-    extracted_attributes: Optional[Dict[str, str]] = {}
+    extracted_attributes: Optional[Dict[str, Any]] = {}
     source_citations: Optional[List[Dict[str, Any]]] = []
+    extracted_text: Optional[str] = None
+    extracted_product_data: Optional[Dict[str, Any]] = None
     created_at: datetime
     is_ambiguous: Optional[bool] = False
     possible_matches: Optional[List[Dict[str, Any]]] = []

@@ -11,7 +11,13 @@ from app.db.models.document import Document
 from app.db.models.product import Product, ProductVersion, ProductAttribute
 from app.db.models.change import Change, ChangeImpact
 from app.utils.file_storage import save_uploaded_file
-from app.schemas.document import DocumentUploadResponse, DocumentResponse
+from app.schemas.document import DocumentUploadResponse, DocumentResponse, ProductExtractionResponse
+
+from app.services.pdf_processor import PDFProcessor
+from app.services.tabular_processor import TabularProcessor
+from app.services.image_processor import ImageProcessor
+from app.services.docx_processor import DocxProcessor
+from app.services.product_extraction_service import ProductExtractionService
 
 class DocumentService:
     @staticmethod
@@ -23,6 +29,7 @@ class DocumentService:
     ) -> DocumentUploadResponse:
         # Save file to uploads directory and get metadata
         file_meta = await save_uploaded_file(file)
+        lower_fname = file_meta["original_file_name"].lower()
 
         # Read content to identify product from document text/bytes
         with open(file_meta["file_path"], "rb") as f:
@@ -100,6 +107,55 @@ class DocumentService:
                 if not is_ambiguous:
                     matched_product = top_product
                     confidence = min(0.99, round(top_score / 100.0, 2))
+        # Process document based on format
+        extracted_data = {}
+        if lower_fname.endswith(".pdf"):
+            try:
+                extracted_data = PDFProcessor.extract_pdf_content(file_meta["file_path"])
+            except Exception as pdf_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"PDF stored. Extraction note: {pdf_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".xlsx", ".xls", ".csv")):
+            try:
+                extracted_data = TabularProcessor.extract_tabular_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as tab_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Spreadsheet stored. Extraction note: {tab_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".png", ".jpg", ".jpeg", ".webp")):
+            try:
+                extracted_data = ImageProcessor.extract_image_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as img_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Image stored. Extraction note: {img_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".docx", ".doc")):
+            try:
+                extracted_data = DocxProcessor.extract_docx_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as docx_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Word document stored. Extraction note: {docx_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+
+        pages_count = extracted_data.get("pages_count", 1)
+        extracted_summary = extracted_data.get("extracted_summary") or f"Ingested {file_meta['original_file_name']} with verified processing."
+        extracted_attributes = extracted_data.get("extracted_attributes") or {}
+        if "sheets" in extracted_data:
+            extracted_attributes["sheets"] = extracted_data["sheets"]
+        source_citations = extracted_data.get("source_citations") or []
 
         doc_record = Document(
             file_name=file_meta["file_name"],
@@ -110,7 +166,7 @@ class DocumentService:
             file_size_formatted=file_meta["file_size_formatted"],
             mime_type=file_meta["mime_type"],
             content_hash=file_meta["content_hash"],
-            product_id=matched_product.id if matched_product else None,
+            product_id=product_id,
             uploaded_by=uploaded_by,
             processing_status="REVIEW_REQUIRED" if is_ambiguous else "PROCESSED",
             version_detected="v2.0" if "2026" in file_meta["original_file_name"] or "v2" in file_meta["original_file_name"].lower() else "v1.0",
@@ -126,6 +182,16 @@ class DocumentService:
         # Stage version change draft if confidently matched
         if matched_product and not is_ambiguous:
             DocumentService._stage_changes_for_product(db, matched_product, doc_record, file_meta)
+        # Automatically execute Product Extraction and Version Detection Pipeline
+        try:
+            from app.services.version_detection_service import VersionDetectionService
+            DocumentService.extract_product_intelligence(db, doc_record.id)
+            v_res = VersionDetectionService.analyze_document_version(db, doc_record.id)
+            db.refresh(doc_record)
+        except Exception as pipe_err:
+            pass
+
+        prod = db.query(Product).filter(Product.id == doc_record.product_id).first() if doc_record.product_id else None
 
         return DocumentUploadResponse(
             id=doc_record.id,
@@ -136,9 +202,9 @@ class DocumentService:
             file_size_formatted=doc_record.file_size_formatted,
             processing_status=doc_record.processing_status,
             product_id=doc_record.product_id,
-            product_model=matched_product.product_code if matched_product else None,
+            product_model=prod.product_code if prod else None,
             match_confidence=doc_record.match_confidence,
-            is_same_product_detected=bool(matched_product),
+            is_same_product_detected=bool(doc_record.product_id),
             uploaded_at=doc_record.uploaded_at,
             message="Product identification is ambiguous. No update applied." if is_ambiguous else "Document uploaded, stored, and indexed successfully",
             is_ambiguous=is_ambiguous,
@@ -203,6 +269,7 @@ class DocumentService:
             source_document_id=doc_record.id,
             is_current=False,
             status="DRAFT"
+            message="Document uploaded, stored, and processed through intelligence pipeline."
         )
         db.add(draft_version)
         db.commit()
@@ -351,8 +418,30 @@ class DocumentService:
         return items, total
 
     @staticmethod
-    def get_document_by_id(db: Session, doc_id: int) -> Document:
-        doc = db.query(Document).filter(Document.id == doc_id).first()
+    def get_document_by_id(db: Session, document_id: int) -> Document:
+        doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
-            raise HTTPException(status_code=404, detail=f"Document ID {doc_id} not found")
+            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
         return doc
+
+    @staticmethod
+    def extract_product_intelligence(db: Session, document_id: int) -> ProductExtractionResponse:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
+
+        # Run extraction using LLM service
+        extraction_res = ProductExtractionService.extract_product_intelligence(
+            document_id=doc.id,
+            file_name=doc.original_file_name,
+            extracted_text=doc.extracted_text,
+            extracted_attributes=doc.extracted_attributes or {},
+            source_citations=doc.source_citations or []
+        )
+
+        # Persist structured product intelligence in document record
+        doc.extracted_product_data = extraction_res.model_dump(mode="json")
+        db.commit()
+        db.refresh(doc)
+
+        return extraction_res

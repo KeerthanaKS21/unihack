@@ -75,6 +75,40 @@ export interface Product {
   impactsPending: number;
 }
 
+export interface ProductIdentityData {
+  manufacturer?: string;
+  model?: string;
+  product_name?: string;
+  product_type?: string;
+  category?: string;
+}
+
+export interface ProductSpecificationItem {
+  attribute_name: string;
+  value: any;
+  unit?: string;
+  raw_value?: string;
+  source_text?: string;
+  source?: {
+    document_id?: number;
+    page?: number;
+    sheet?: string;
+    row?: number;
+    source_type?: string;
+    snippet?: string;
+  };
+  model_confidence?: number;
+}
+
+export interface ProductExtractionResult {
+  document_id: number;
+  product: ProductIdentityData;
+  specifications: ProductSpecificationItem[];
+  extracted_at?: string;
+  source_format?: string;
+  message?: string;
+}
+
 export interface IngestedDocument {
   id: string;
   filename: string;
@@ -90,7 +124,9 @@ export interface IngestedDocument {
   detectedChangesSummary?: string;
   pagesCount: number;
   extractedAttributes: Record<string, string>;
-  sourceCitations: { page: number; snippet: string; boundingBox?: string }[];
+  sourceCitations: { page: number; snippet: string; boundingBox?: string; attribute?: string; confidence?: number }[];
+  extractedText?: string;
+  extractedProductData?: ProductExtractionResult;
 }
 
 export interface CatalogIssue {
@@ -232,9 +268,18 @@ export interface AIMessage {
     verified: boolean;
   }[];
   isMissingDataDemonstration?: boolean;
+  cardType?: 'product_specs' | 'supplier_comparison' | 'quotation_breakdown' | 'compatibility_matrix' | 'compliance_audit' | 'change_delta' | 'missing_data_alert';
+  cardData?: any;
   actionCard?: {
     title: string;
     label: string;
     url: string;
   };
+  actions?: {
+    title: string;
+    label: string;
+    url: string;
+  }[];
 }
+
+

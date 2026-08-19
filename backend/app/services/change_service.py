@@ -28,6 +28,7 @@ class ChangeService:
             results.append({
                 "id": c.id,
                 "product_id": c.product_id,
+                "product_code": prod.product_code if prod else f"PROD-{c.product_id}",
                 "product_name": prod.name if prod else f"Product #{c.product_id}",
                 "attribute_name": c.attribute_name,
                 "old_value": c.old_value,

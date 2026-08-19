@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.db.database import get_db
 from app.services.document_service import DocumentService
-from app.schemas.document import DocumentUploadResponse, DocumentListResponse, DocumentResponse
+from app.schemas.document import (
+    DocumentUploadResponse,
+    DocumentListResponse,
+    DocumentResponse,
+    ProductExtractionResponse
+)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -56,3 +61,53 @@ def get_document(id: int, db: Session = Depends(get_db)):
 def link_document(id: int, product_id: int = Query(...), db: Session = Depends(get_db)):
     return DocumentService.link_product_manually(db, id, product_id)
 
+@router.post("/{id}/extract-product", response_model=ProductExtractionResponse, summary="Extract standardized structured product intelligence using LLM")
+def extract_product_from_document(id: int, db: Session = Depends(get_db)):
+    """
+    Step 5 LLM-Powered Product Extraction:
+    1. Retrieves document and its extracted content (text/tables/OCR).
+    2. Sends context to LLM with strict anti-hallucination and JSON schema rules.
+    3. Validates and returns standardized ProductIdentity and Specifications.
+    4. Persists the structured product data to the document record.
+    """
+    return DocumentService.extract_product_intelligence(db, id)
+
+@router.post("/{id}/identify-product", summary="Identify matching Master Catalog product based on multi-factor evidence")
+def identify_product(id: int, db: Session = Depends(get_db)):
+    """
+    Stage 1: Multi-factor evidence product identification.
+    """
+    from app.services.product_identification_service import ProductIdentificationService
+    doc = DocumentService.get_document_by_id(db, id)
+    if not doc.extracted_product_data:
+        DocumentService.extract_product_intelligence(db, id)
+    return ProductIdentificationService.identify_product_for_document(db, id)
+
+@router.post("/{id}/detect-version", summary="Perform unit normalization, version detection, diff detection, and impact generation")
+def detect_version(id: int, db: Session = Depends(get_db)):
+    """
+    Stages 2, 3, 4, 7:
+    - Normalizes specification values using Pint.
+    - Compares against active Master Catalog version.
+    - Computes diffs (MODIFIED, UNCHANGED, ADDED).
+    - Generates downstream impacts across Compatibility, E-commerce, Procurement, and Quotes.
+    """
+    from app.services.version_detection_service import VersionDetectionService
+    doc = DocumentService.get_document_by_id(db, id)
+    if not doc.extracted_product_data:
+        DocumentService.extract_product_intelligence(db, id)
+    return VersionDetectionService.analyze_document_version(db, id)
+
+@router.post("/{id}/approve-sync", summary="Human approval of candidate version synchronization")
+def approve_sync(
+    id: int,
+    approved_by: Optional[str] = Query("Lead Systems Engineer"),
+    comments: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Stage 9: Human Approval of Synchronization:
+    Promotes candidate version to active, archives previous version, marks changes APPROVED.
+    """
+    from app.services.version_detection_service import VersionDetectionService
+    return VersionDetectionService.approve_synchronization(db, id, approved_by=approved_by, comments=comments)
