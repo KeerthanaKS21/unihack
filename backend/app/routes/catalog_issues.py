@@ -14,11 +14,12 @@ router = APIRouter(prefix="/catalog-issues", tags=["Catalog Issues"])
 @router.get("", response_model=CatalogIssueListResponse, summary="List catalog issues with filtering and pagination")
 def list_issues(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    issue_type: Optional[str] = Query(None, description="conflict, missing, duplicate, invalid_unit, wrong_category, outdated, compliance, broken_relationship"),
-    status: Optional[str] = Query(None, description="open, in_review, resolved, rejected"),
+    limit: int = Query(50, ge=1, le=100),
+    issue_type: Optional[str] = Query(None, description="conflict, missing, duplicate, invalid_unit, wrong_category, outdated, compliance, broken_relationship, low_confidence"),
+    status: Optional[str] = Query(None, description="open, in_review, resolved, rejected, all"),
     severity: Optional[str] = Query(None),
     product_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     items, total = IssueService.get_issues(
@@ -28,7 +29,8 @@ def list_issues(
         issue_type=issue_type,
         status=status,
         severity=severity,
-        product_id=product_id
+        product_id=product_id,
+        search=search
     )
     return CatalogIssueListResponse(total=total, page=page, limit=limit, items=items)
 
@@ -43,6 +45,7 @@ def resolve_issue(
     db: Session = Depends(get_db)
 ):
     """
-    1-click resolution endpoint. Updates issue status to 'resolved', stores chosen value, and writes audit/approval record.
+    1-click resolution endpoint. Updates issue status to 'resolved', stores chosen value,
+    applies real database correction, and writes audit/approval record.
     """
     return IssueService.resolve_issue(db, id, req)
