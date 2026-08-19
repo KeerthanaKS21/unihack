@@ -19,6 +19,208 @@ class VersionDetectionService:
     """
 
     @classmethod
+    def _process_tabular_catalog(cls, db: Session, doc: Document) -> Optional[Dict[str, Any]]:
+        attrs = doc.extracted_attributes or {}
+        sheets = attrs.get("sheets", [])
+        if not sheets:
+            return None
+
+        all_rows = []
+        for s in sheets:
+            rows = s.get("all_rows") or s.get("sample_rows") or []
+            all_rows.extend(rows)
+
+        if not all_rows or len(all_rows) < 1:
+            return None
+
+        doc_fname = (doc.original_file_name or "").lower()
+        default_ver = "v2.0" if ("updated" in doc_fname or "v2" in doc_fname or "2026" in doc_fname or "new" in doc_fname) else "v1.0"
+
+        processed_products = []
+        all_created_changes = []
+        all_created_impacts = []
+
+        for row in all_rows:
+            model_raw = row.get("ID") or row.get("id") or row.get("Model") or row.get("model") or row.get("SKU") or row.get("sku") or row.get("Model Identifier")
+            if not model_raw:
+                continue
+            clean_code = str(model_raw).strip()
+            if not clean_code or clean_code.lower() == "nan" or clean_code.lower() == "none":
+                continue
+
+            name_raw = str(row.get("Name") or row.get("name") or f"{clean_code} Industrial Equipment").strip()
+            cat_raw = str(row.get("Category") or row.get("category") or "Industrial Equipment").strip()
+            ver_raw = str(row.get("Version") or row.get("version") or "").strip()
+
+            spec_dict = {}
+            for col_k, col_v in row.items():
+                clean_k = str(col_k).strip()
+                if clean_k.lower() in ["id", "name", "category", "version", "unnamed"] or clean_k.startswith("Unnamed:"):
+                    continue
+                v_str = str(col_v).strip() if col_v is not None else ""
+                if v_str and v_str.lower() not in ["nan", "none", "null", ""]:
+                    spec_dict[clean_k] = v_str
+
+            prod = db.query(Product).filter(Product.product_code == clean_code).first()
+            if not prod:
+                # First time seeing this product -> Baseline v1.0
+                row_ver = "v1.0"
+                prod = Product(
+                    product_code=clean_code,
+                    name=name_raw,
+                    category=cat_raw,
+                    manufacturer="InduCore Industrial",
+                    status="ACTIVE"
+                )
+                db.add(prod)
+                db.commit()
+                db.refresh(prod)
+
+                base_v = ProductVersion(
+                    product_id=prod.id,
+                    version_number=row_ver,
+                    source_document_id=doc.id,
+                    effective_date=datetime.utcnow(),
+                    is_current=True,
+                    verified_by="Spreadsheet Ingestion Pipeline",
+                    status="VERIFIED"
+                )
+                db.add(base_v)
+                db.commit()
+                db.refresh(base_v)
+
+                for k, v in spec_dict.items():
+                    attr_rec = ProductAttribute(
+                        product_version_id=base_v.id,
+                        attribute_name=k,
+                        attribute_value=v,
+                        confidence=0.99,
+                        verification_status="VERIFIED"
+                    )
+                    db.add(attr_rec)
+
+                prod.current_version_id = base_v.id
+                db.commit()
+                processed_products.append(prod)
+            else:
+                # Product already exists in DB -> Incremental Revision v2.0
+                curr_v = db.query(ProductVersion).filter(ProductVersion.product_id == prod.id, ProductVersion.is_current == True).first()
+                if not curr_v:
+                    curr_v = db.query(ProductVersion).filter(ProductVersion.product_id == prod.id).order_by(ProductVersion.created_at.desc()).first()
+
+                # Determine next version label
+                if curr_v and curr_v.source_document_id != doc.id:
+                    row_ver = "v2.0"
+                else:
+                    row_ver = default_ver
+
+                prev_attrs_map = {a.attribute_name.strip().lower(): a.attribute_value for a in (curr_v.attributes if curr_v else [])}
+
+                # Clean up existing version for this specific doc if re-running
+                existing_ver = db.query(ProductVersion).filter(
+                    ProductVersion.product_id == prod.id,
+                    ProductVersion.source_document_id == doc.id
+                ).first()
+
+                if existing_ver and existing_ver.id != getattr(curr_v, 'id', None):
+                    db.query(ProductAttribute).filter(ProductAttribute.product_version_id == existing_ver.id).delete()
+                    db.delete(existing_ver)
+                    db.commit()
+
+                if not existing_ver or existing_ver.id != getattr(curr_v, 'id', None):
+                    new_v = ProductVersion(
+                        product_id=prod.id,
+                        version_number=row_ver,
+                        source_document_id=doc.id,
+                        effective_date=datetime.utcnow(),
+                        is_current=True,
+                        verified_by="Spreadsheet Update Pipeline",
+                        status="VERIFIED"
+                    )
+                    db.add(new_v)
+                    db.commit()
+                    db.refresh(new_v)
+
+                    for k, v in spec_dict.items():
+                        attr_rec = ProductAttribute(
+                            product_version_id=new_v.id,
+                            attribute_name=k,
+                            attribute_value=v,
+                            confidence=0.99,
+                            verification_status="VERIFIED"
+                        )
+                        db.add(attr_rec)
+
+                    # Compare specifications against previous baseline
+                    for k, v in spec_dict.items():
+                        clean_k = k.strip().lower()
+                        if clean_k in prev_attrs_map:
+                            old_val = prev_attrs_map[clean_k]
+                            # Clean unit suffixes for comparison if needed
+                            clean_old = old_val.replace("kW", "").replace("RPM", "").strip().lower()
+                            clean_new = v.replace("kW", "").replace("RPM", "").strip().lower()
+                            
+                            if clean_old != clean_new and old_val.strip().lower() != v.strip().lower():
+                                chg = Change(
+                                    product_id=prod.id,
+                                    old_version_id=curr_v.id if curr_v else None,
+                                    new_version_id=new_v.id,
+                                    attribute_name=k,
+                                    old_value=old_val,
+                                    new_value=v,
+                                    change_type="MODIFIED",
+                                    source_document=doc.original_file_name,
+                                    confidence=0.99,
+                                    status="PENDING"
+                                )
+                                db.add(chg)
+                                db.commit()
+                                db.refresh(chg)
+                                all_created_changes.append(chg)
+
+                                impacts_data = [
+                                    ("Compatibility", "high", f"Coupling & electrical compatibility review required for {clean_code}", f"Coupling & electrical load review required for {clean_code} with upstream controller and motor drive load.", "/compatibility"),
+                                    ("E-commerce", "medium", f"Storefront SKU {clean_code} Outdated on Website", f"Storefront technical specifications and search filter facets out of sync on website for {clean_code}.", "/ecommerce"),
+                                    ("Procurement", "medium", f"Supplier catalog specifications index update for {clean_code}", f"Supplier catalog specifications and unit rate index update for {clean_code}.", "/procurement"),
+                                    ("Quotes", "low", f"Open Quote Draft Review for {clean_code}", f"Active customer quotation drafts and proposals contain previous {clean_code} ratings.", "/quotes")
+                                ]
+                                for imp_type, sev, title_txt, desc_txt, mod_url in impacts_data:
+                                    imp = ChangeImpact(
+                                        change_id=chg.id,
+                                        impact_type=imp_type,
+                                        severity=sev,
+                                        title=title_txt,
+                                        description=desc_txt,
+                                        affected_entity_type="Product Specification",
+                                        affected_entity_id=clean_code,
+                                        target_module_url=mod_url,
+                                        reviewed=False
+                                    )
+                                    db.add(imp)
+                                    all_created_impacts.append(imp)
+                                db.commit()
+
+                    if curr_v and curr_v.id != new_v.id:
+                        curr_v.is_current = False
+                    prod.current_version_id = new_v.id
+                    db.commit()
+                processed_products.append(prod)
+
+        if processed_products:
+            doc.product_id = processed_products[0].id
+            doc.version_detected = default_ver
+            doc.match_confidence = 1.0
+            db.commit()
+
+        return {
+            "document_id": doc.id,
+            "total_products_processed": len(processed_products),
+            "total_changes_detected": len(all_created_changes),
+            "total_impacts_generated": len(all_created_impacts),
+            "message": f"Successfully processed {len(processed_products)} catalog products across spreadsheet rows."
+        }
+
+    @classmethod
     def analyze_document_version(
         cls,
         db: Session,
@@ -27,6 +229,12 @@ class VersionDetectionService:
         doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
             raise HTTPException(status_code=404, detail=f"Document #{document_id} not found")
+
+        # 0. If Spreadsheet or CSV with multiple rows, run batch catalog processing
+        if doc.document_type == "SPREADSHEET" or (doc.original_file_name or "").lower().endswith((".xlsx", ".xls", ".csv")):
+            tab_res = cls._process_tabular_catalog(db, doc)
+            if tab_res:
+                return tab_res
 
         # 1. Product Identification
         ident_result = ProductIdentificationService.identify_product_for_document(db, document_id)

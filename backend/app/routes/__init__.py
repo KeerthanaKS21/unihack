@@ -34,6 +34,3 @@ api_router.include_router(ecommerce_router)
 api_router.include_router(procurement_router)
 
 __all__ = ["api_router"]
-
-
-

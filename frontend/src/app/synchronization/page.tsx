@@ -20,13 +20,13 @@ import {
   Lock,
   Sparkles,
   Loader2,
-  Check
+  Check,
+  Filter
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SynchronizationPage() {
   const {
-    activeProduct,
     unreviewedImpactsCount,
     reviewedImpactsCount,
     setViewingDocument,
@@ -45,6 +45,7 @@ export default function SynchronizationPage() {
   const [isSyncApproved, setIsSyncApproved] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [versionDiff, setVersionDiff] = useState<any | null>(null);
+  const [selectedProductFilter, setSelectedProductFilter] = useState<string>('all');
 
   // Fetch changes & latest document from backend
   const fetchSyncData = async () => {
@@ -58,14 +59,18 @@ export default function SynchronizationPage() {
         setActiveDoc(latest);
 
         // Run detect-version on latest doc to get dynamic spec diff
-        const diffRes = await fetch(`http://localhost:8000/api/documents/${latest.id}/detect-version`, { method: 'POST' });
-        if (diffRes.ok) {
-          const diffJson = await diffRes.json();
-          setVersionDiff(diffJson);
+        try {
+          const diffRes = await fetch(`http://localhost:8000/api/documents/${latest.id}/detect-version`, { method: 'POST' });
+          if (diffRes.ok) {
+            const diffJson = await diffRes.json();
+            setVersionDiff(diffJson);
+          }
+        } catch (e) {
+          console.warn('detect-version note:', e);
         }
       }
 
-      // 2. Fetch changes
+      // 2. Fetch changes from DB
       const changesRes = await api.getChanges();
       if (Array.isArray(changesRes)) {
         setDbChanges(changesRes);
@@ -117,8 +122,30 @@ export default function SynchronizationPage() {
   };
 
   const hasUnreviewedImpacts = unreviewedImpactsCount > 0;
-  const changesList = versionDiff?.changes || [];
-  const meaningfulChanges = changesList.filter((c: any) => c.change_type === 'MODIFIED' || c.change_type === 'ADDED');
+
+  // Build unified changes list from either single-doc versionDiff or multi-row dbChanges
+  let combinedRows: any[] = [];
+  if (versionDiff?.changes && versionDiff.changes.length > 0) {
+    combinedRows = versionDiff.changes;
+  } else if (dbChanges && dbChanges.length > 0) {
+    combinedRows = dbChanges.map((c: any) => ({
+      attribute_name: c.attribute_name,
+      old_value: c.old_value || '-',
+      new_value: c.new_value,
+      change_type: c.change_type || 'MODIFIED',
+      product_code: c.product_code || c.affected_entity_id || (c.product?.product_code),
+      source_document: c.source_document || activeDoc?.original_file_name,
+      status: c.status || 'PENDING'
+    }));
+  }
+
+  // Filter by product if selected
+  const availableProducts = Array.from(new Set(combinedRows.map(r => r.product_code).filter(Boolean)));
+  const displayedRows = selectedProductFilter === 'all'
+    ? combinedRows
+    : combinedRows.filter(r => r.product_code === selectedProductFilter);
+
+  const meaningfulChanges = displayedRows.filter((c: any) => c.change_type === 'MODIFIED' || c.change_type === 'ADDED');
 
   return (
     <div className="space-y-6">
@@ -129,7 +156,7 @@ export default function SynchronizationPage() {
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Synchronization' }
         ]}
-        badge={isSyncApproved ? 'Synchronized & Verified' : meaningfulChanges.length > 0 ? 'Version Delta Detected' : 'Baseline Verified'}
+        badge={isSyncApproved ? 'Synchronized & Verified' : meaningfulChanges.length > 0 ? `${meaningfulChanges.length} Changes Detected` : 'Baseline Verified'}
         badgeVariant={isSyncApproved ? 'success' : meaningfulChanges.length > 0 ? 'warning' : 'primary'}
         action={
           <div className="flex items-center gap-2.5">
@@ -176,10 +203,10 @@ export default function SynchronizationPage() {
           </div>
           <div>
             <h3 className="text-sm font-bold">
-              Master Record Synchronized & Verified ({versionDiff?.candidate_version || 'v2.0'} Active)
+              Master Record Synchronized & Verified (Active in Master Catalog)
             </h3>
             <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
-              {versionDiff?.product_name || 'XYZ-450'} specifications have been validated with human sign-off and propagated across the unified enterprise data layer. Previous versions archived.
+              Specifications have been validated with human engineering sign-off and propagated across the enterprise data layer. Previous versions archived in history.
             </p>
           </div>
         </div>
@@ -200,11 +227,11 @@ export default function SynchronizationPage() {
                     {meaningfulChanges.length} Technical Changes Detected
                   </span>
                   <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-amber-100 text-amber-800 font-bold">
-                    {versionDiff?.existing_version || 'v1.4'} → {versionDiff?.candidate_version || 'v2.0'}
+                    v1.0 → v2.0
                   </span>
                 </div>
                 <h4 className="text-sm font-bold text-slate-900 mt-1">
-                  {versionDiff?.product_name || 'Siemens XYZ-450 Industrial Motor'}
+                  {versionDiff?.product_name || (availableProducts.length > 0 ? `${availableProducts.join(', ')} Catalog Delta` : 'Catalog Version Delta')}
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Source: <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600 font-mono">{activeDoc?.original_file_name || activeDoc?.filename || 'Document'}</code>
@@ -217,11 +244,11 @@ export default function SynchronizationPage() {
                   id: String(activeDoc.id),
                   filename: activeDoc.original_file_name || activeDoc.filename,
                   productId: String(activeDoc.product_id || 1),
-                  productModel: 'XYZ-450',
+                  productModel: availableProducts[0] || 'Catalog Product',
                   documentType: activeDoc.document_type || 'DATASHEET',
                   uploadedOn: 'Today',
                   fileSize: '3.2 MB',
-                  version: versionDiff?.candidate_version || 'v2.0',
+                  version: 'v2.0',
                   status: 'Processed',
                   matchConfidence: 0.98,
                   isSameProductDetected: true,
@@ -281,7 +308,7 @@ export default function SynchronizationPage() {
 
       {/* Main Spec Comparison Diff Table */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-bold text-slate-900 tracking-tight">
               Specification Parameter Comparison Matrix
@@ -292,6 +319,23 @@ export default function SynchronizationPage() {
           </div>
 
           <div className="flex items-center gap-4 text-xs">
+            {/* Filter by product if multiple products exist */}
+            {availableProducts.length > 1 && (
+              <div className="flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  value={selectedProductFilter}
+                  onChange={e => setSelectedProductFilter(e.target.value)}
+                  className="text-xs font-bold px-2.5 py-1 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none"
+                >
+                  <option value="all">All Modified Products ({availableProducts.length})</option>
+                  {availableProducts.map((pCode, idx) => (
+                    <option key={idx} value={pCode}>{pCode}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300" />
               <span className="text-slate-600 font-medium">Changed Attribute</span>
@@ -310,7 +354,7 @@ export default function SynchronizationPage() {
               <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
               <p className="text-xs">Loading live parameter comparison matrix...</p>
             </div>
-          ) : changesList.length === 0 ? (
+          ) : displayedRows.length === 0 ? (
             <div className="p-8 text-center bg-slate-50 space-y-2">
               <ShieldCheck className="w-8 h-8 text-emerald-600 mx-auto" />
               <h4 className="text-sm font-bold text-slate-800">Master Record in Sync</h4>
@@ -328,18 +372,19 @@ export default function SynchronizationPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
+                  {availableProducts.length > 1 && <th className="py-3 px-4 w-1/6">Product Target</th>}
                   <th className="py-3 px-4 w-1/4">Specification Parameter</th>
                   <th className="py-3 px-4 w-1/4 text-slate-500 bg-slate-50">
-                    Previous Baseline ({versionDiff?.existing_version || 'v1.4'})
+                    Previous Baseline (v1.0)
                   </th>
                   <th className="py-3 px-4 w-1/4 text-blue-900 bg-blue-50/70 border-l border-r border-blue-100">
-                    Newly Ingested ({versionDiff?.candidate_version || 'v2.0'})
+                    Newly Ingested (v2.0)
                   </th>
                   <th className="py-3 px-4 w-1/4">Delta Analysis & Impact Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {changesList.map((row: any, idx: number) => {
+                {displayedRows.map((row: any, idx: number) => {
                   const isModified = row.change_type === 'MODIFIED' || row.change_type === 'ADDED';
                   return (
                     <tr
@@ -348,6 +393,11 @@ export default function SynchronizationPage() {
                         isModified ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/60'
                       }`}
                     >
+                      {availableProducts.length > 1 && (
+                        <td className="py-3.5 px-4 font-mono font-bold text-blue-800">
+                          {row.product_code || '-'}
+                        </td>
+                      )}
                       <td className="py-3.5 px-4 font-bold text-slate-800 capitalize">
                         {row.attribute_name.replace(/_/g, ' ')}
                       </td>
@@ -423,8 +473,8 @@ export default function SynchronizationPage() {
       {/* Confirmation Dialog Modal */}
       <ConfirmationModal
         isOpen={confirmModalOpen}
-        title={`Confirm Version ${versionDiff?.candidate_version || 'v2.0'} Synchronization`}
-        description={`You are about to promote ${versionDiff?.product_name || 'XYZ-450'} to the verified master data catalog. Previous baseline (${versionDiff?.existing_version || 'v1.4'}) will be archived.`}
+        title={`Confirm Synchronization Sign-off`}
+        description={`You are about to promote verified version specifications to the master data catalog. Previous baseline versions will be archived in history.`}
         confirmLabel="Confirm & Publish to Master"
         cancelLabel="Cancel"
         variant="primary"
