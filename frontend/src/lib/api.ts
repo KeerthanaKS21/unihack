@@ -158,6 +158,7 @@ export const api = {
 
   // Catalog Health & Issues
   getCatalogHealth: () => request<any>('/catalog-health'),
+  scanCatalogHealth: () => request<any>('/catalog-health/scan', { method: 'POST' }),
 
   getCatalogIssues: (params?: {
     page?: number;
@@ -166,6 +167,7 @@ export const api = {
     status?: string;
     severity?: string;
     product_id?: number;
+    search?: string;
   }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
@@ -174,6 +176,7 @@ export const api = {
     if (params?.status && params.status !== 'all') query.set('status', params.status);
     if (params?.severity && params.severity !== 'all') query.set('severity', params.severity);
     if (params?.product_id) query.set('product_id', String(params.product_id));
+    if (params?.search) query.set('search', params.search);
     const qs = query.toString();
     return request<{ total: number; page: number; limit: number; items: any[] }>(`/catalog-issues${qs ? `?${qs}` : ''}`);
   },

@@ -38,6 +38,42 @@ class UnitNormalizationService:
     }
 
     @classmethod
+    def normalize_attribute(cls, attr_name: str, raw_str: str) -> Dict[str, Any]:
+        """
+        Convenience method to normalize a string specification (e.g. '5500 W', '42 kg').
+        """
+        if not raw_str:
+            return {"attribute_name": attr_name, "raw_value": None, "raw_unit": None, "normalized_value": None, "unit": None}
+        
+        match = re.search(r'([-+]?[0-9]*\.?[0-9]+)\s*([a-zA-Z/%_\-\^0-9]*)', str(raw_str).strip())
+        if match:
+            try:
+                val = float(match.group(1))
+                unit = match.group(2).strip()
+                spec_payload = {
+                    "attribute_name": attr_name.lower().replace(" ", "_"),
+                    "value": val,
+                    "unit": unit or None,
+                    "raw_value": str(raw_str).strip()
+                }
+                res = cls.normalize_specification(spec_payload)
+                return {
+                    "attribute_name": attr_name,
+                    "raw_value": str(raw_str).strip(),
+                    "normalized_value": res.get("normalized_value") if res.get("normalization_status") == "NORMALIZED" else val,
+                    "unit": res.get("normalized_unit") or unit or None
+                }
+            except Exception:
+                pass
+        
+        return {
+            "attribute_name": attr_name,
+            "raw_value": str(raw_str).strip(),
+            "normalized_value": None,
+            "unit": None
+        }
+
+    @classmethod
     def normalize_specification(cls, spec: Dict[str, Any]) -> Dict[str, Any]:
         """
         Normalize a single specification item without mutating raw values.
