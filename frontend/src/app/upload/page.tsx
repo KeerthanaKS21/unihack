@@ -278,7 +278,7 @@ export default function UploadIngestPage() {
   };
 
   const totalPages = Math.ceil(totalDocsCount / pageSize) || 1;
-  const displayDocs = dbDocuments.length > 0 ? dbDocuments : fallbackDocs;
+  const displayDocs = dbDocuments;
 
   return (
     <div className="space-y-6">

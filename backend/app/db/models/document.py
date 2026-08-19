@@ -26,6 +26,7 @@ class Document(Base):
     extracted_attributes = Column(JSON, nullable=True)
     source_citations = Column(JSON, nullable=True)
     extracted_text = Column(Text, nullable=True)
+    extracted_product_data = Column(JSON, nullable=True)     # Standardized structured product data from LLM
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships

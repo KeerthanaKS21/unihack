@@ -283,4 +283,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ message, conversationId }),
     }),
+
+  // E-commerce
+  syncEcommerceCatalog: (productId: string | number) =>
+    request<any>(`/ecommerce/sync/${productId}`, {
+      method: 'POST',
+    }),
+
+  // Procurement
+  parseProcurementPrompt: (prompt: string) =>
+    request<any>('/procurement/parse-prompt', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
+
+  evaluateProcurement: (category: string, constraints: any[], quantity: number) =>
+    request<any>('/procurement/evaluate', {
+      method: 'POST',
+      body: JSON.stringify({ category, constraints, quantity }),
+    }),
+
+  getProcurementSchemas: () => request<any>('/procurement/schemas'),
 };
+

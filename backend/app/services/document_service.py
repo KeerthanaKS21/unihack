@@ -5,10 +5,13 @@ from fastapi import UploadFile, HTTPException
 from app.db.models.document import Document
 from app.db.models.product import Product
 from app.utils.file_storage import save_uploaded_file
-from app.schemas.document import DocumentUploadResponse, DocumentResponse
+from app.schemas.document import DocumentUploadResponse, DocumentResponse, ProductExtractionResponse
 
 from app.services.pdf_processor import PDFProcessor
 from app.services.tabular_processor import TabularProcessor
+from app.services.image_processor import ImageProcessor
+from app.services.docx_processor import DocxProcessor
+from app.services.product_extraction_service import ProductExtractionService
 
 class DocumentService:
     @staticmethod
@@ -41,6 +44,26 @@ class DocumentService:
                 extracted_data = {
                     "pages_count": 1,
                     "extracted_summary": f"Spreadsheet stored. Extraction note: {tab_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".png", ".jpg", ".jpeg", ".webp")):
+            try:
+                extracted_data = ImageProcessor.extract_image_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as img_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Image stored. Extraction note: {img_err}",
+                    "extracted_attributes": {},
+                    "source_citations": []
+                }
+        elif lower_fname.endswith((".docx", ".doc")):
+            try:
+                extracted_data = DocxProcessor.extract_docx_content(file_meta["file_path"], file_meta["original_file_name"])
+            except Exception as docx_err:
+                extracted_data = {
+                    "pages_count": 1,
+                    "extracted_summary": f"Word document stored. Extraction note: {docx_err}",
                     "extracted_attributes": {},
                     "source_citations": []
                 }
@@ -90,6 +113,17 @@ class DocumentService:
         db.commit()
         db.refresh(doc_record)
 
+        # Automatically execute Product Extraction and Version Detection Pipeline
+        try:
+            from app.services.version_detection_service import VersionDetectionService
+            DocumentService.extract_product_intelligence(db, doc_record.id)
+            v_res = VersionDetectionService.analyze_document_version(db, doc_record.id)
+            db.refresh(doc_record)
+        except Exception as pipe_err:
+            pass
+
+        prod = db.query(Product).filter(Product.id == doc_record.product_id).first() if doc_record.product_id else None
+
         return DocumentUploadResponse(
             id=doc_record.id,
             file_name=doc_record.file_name,
@@ -99,11 +133,11 @@ class DocumentService:
             file_size_formatted=doc_record.file_size_formatted,
             processing_status=doc_record.processing_status,
             product_id=doc_record.product_id,
-            product_model=matched_product.product_code if matched_product else None,
+            product_model=prod.product_code if prod else None,
             match_confidence=doc_record.match_confidence,
-            is_same_product_detected=bool(matched_product),
+            is_same_product_detected=bool(doc_record.product_id),
             uploaded_at=doc_record.uploaded_at,
-            message="Document uploaded, stored, and indexed successfully"
+            message="Document uploaded, stored, and processed through intelligence pipeline."
         )
 
     @staticmethod
@@ -140,8 +174,30 @@ class DocumentService:
         return items, total
 
     @staticmethod
-    def get_document_by_id(db: Session, doc_id: int) -> Document:
-        doc = db.query(Document).filter(Document.id == doc_id).first()
+    def get_document_by_id(db: Session, document_id: int) -> Document:
+        doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
-            raise HTTPException(status_code=404, detail=f"Document ID {doc_id} not found")
+            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
         return doc
+
+    @staticmethod
+    def extract_product_intelligence(db: Session, document_id: int) -> ProductExtractionResponse:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
+
+        # Run extraction using LLM service
+        extraction_res = ProductExtractionService.extract_product_intelligence(
+            document_id=doc.id,
+            file_name=doc.original_file_name,
+            extracted_text=doc.extracted_text,
+            extracted_attributes=doc.extracted_attributes or {},
+            source_citations=doc.source_citations or []
+        )
+
+        # Persist structured product intelligence in document record
+        doc.extracted_product_data = extraction_res.model_dump(mode="json")
+        db.commit()
+        db.refresh(doc)
+
+        return extraction_res

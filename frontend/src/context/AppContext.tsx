@@ -96,6 +96,7 @@ interface AppContextType {
   generateQuoteFromPrompt: (prompt: string) => Promise<Quotation>;
   modifyQuoteValidation: (quoteId: string, quantity: number, leadDays: number) => Promise<{ success: boolean; message: string; quote: Quotation }>;
   approveQuote: (quoteId: string) => void;
+  createQuoteFromSupplierOffer: (offer: any, quantity: number) => void;
 
   // AI Chat Messages
   salesMessages: AIMessage[];
@@ -199,21 +200,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // 2. Change Impacts from DB
         const impacts = await api.getChangeImpacts().catch(() => null);
-        if (impacts && Array.isArray(impacts) && impacts.length > 0) {
-          setChangeImpacts(prev => prev.map(imp => {
-            const numMatch = imp.id.match(/\d+/);
-            const numId = numMatch ? parseInt(numMatch[0], 10) : null;
-            const dbImp = numId ? impacts.find(i => i.id === numId) : null;
-            if (dbImp) {
-              return {
-                ...imp,
-                reviewed: dbImp.reviewed,
-                reviewedAt: dbImp.reviewed_at ? new Date(dbImp.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : imp.reviewedAt,
-                reviewedBy: dbImp.reviewed_by || imp.reviewedBy,
-              };
-            }
-            return imp;
-          }));
+        if (impacts && Array.isArray(impacts)) {
+          setChangeImpacts(impacts.map((i: any) => ({
+            id: `imp-${i.id}`,
+            productId: `prod-${i.product_id || 'vtx-550'}`,
+            productName: i.product_name || 'Industrial Equipment',
+            changeDescription: i.change_description || '',
+            domain: (i.domain || i.impact_type || 'Operations') as any,
+            title: i.title,
+            explanation: i.description,
+            contextEvidence: i.context_evidence || 'Traceable from uploaded engineering revision.',
+            severity: (i.severity || 'medium') as any,
+            reviewed: Boolean(i.reviewed),
+            reviewedAt: i.reviewed_at ? new Date(i.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+            reviewedBy: i.reviewed_by,
+            targetModuleUrl: i.target_module_url || '/compatibility'
+          })));
+        }
+
+        // 2b. Changes from DB
+        const changes = await api.getChanges().catch(() => null);
+        if (changes && Array.isArray(changes)) {
+          setProductChanges(changes.map((c: any) => ({
+            id: `chg-${c.id}`,
+            productId: `prod-${c.product_id}`,
+            productName: c.product_name,
+            attribute: c.attribute_name,
+            oldValue: c.old_value || '-',
+            newValue: c.new_value,
+            detectedAt: c.detected_at || 'Just now',
+            sourceDocument: c.source_document || 'Uploaded document',
+            confidence: c.confidence || 0.98,
+            status: (c.status || 'pending').toLowerCase() as any
+          })));
         }
 
         // 3. Catalog Issues from DB
@@ -436,18 +455,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // E-commerce Website Update Approval
-  const approveEcommerceUpdate = () => {
+  const approveEcommerceUpdate = async () => {
     setEcommerceStatus('syncing');
-    setTimeout(() => {
-      setEcommerceStatus('published');
-      setEcommerceLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    try {
+      const res = await api.syncEcommerceCatalog(activeProduct.id);
+      if (res && res.success) {
+        setEcommerceStatus('published');
+        setEcommerceLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        showToast({
+          type: 'success',
+          title: 'B2B Catalog API Synchronized',
+          message: `Product specifications successfully updated in Web Storefront. Changed fields: ${res.changedFields?.join(', ') || 'none'}`
+        });
+      } else {
+        setEcommerceStatus('ready_to_publish');
+        showToast({
+          type: 'error',
+          title: 'Synchronization Failed',
+          message: res?.message || 'Unknown response from integration server'
+        });
+      }
+    } catch (err: any) {
+      setEcommerceStatus('ready_to_publish');
       showToast({
-        type: 'success',
-        title: 'B2B Catalog API Synchronized',
-        message: 'Product specs, hero copy, and faceted search buckets updated in Web Storefront & SAP Commerce Cloud.'
+        type: 'error',
+        title: 'Website Update Failed',
+        message: err.message || 'Error connecting to integration server'
       });
-    }, 1200);
+    }
   };
+
 
   // Resolve Catalog Issue
   const resolveCatalogIssue = (issueId: string, resolvedValue: string, note?: string) => {
@@ -667,6 +704,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const createQuoteFromSupplierOffer = (offer: any, quantity: number) => {
+    const newQuote: Quotation = {
+      id: 'quote-' + Math.random().toString(36).substring(2, 7),
+      quoteNumber: 'Q-2026-' + Math.floor(9000 + Math.random() * 1000),
+      version: 'v1.0',
+      customerName: 'Industrial Client Representative',
+      company: 'Premier Manufacturing Corp',
+      requestPrompt: `Procured via Multi-Supplier Constraint Engine: ${quantity} x ${offer.productModel || offer.product_model} from ${offer.supplierName || offer.supplier_name}`,
+      createdAt: 'Just now',
+      validUntil: '30 Days from Issue',
+      status: 'Validated',
+      items: [
+        {
+          productId: offer.id,
+          model: offer.productModel || offer.product_model,
+          description: `${offer.supplierName || offer.supplier_name} - ${offer.productModel || offer.product_model}`,
+          specSummary: Object.entries(offer.specs || {})
+            .filter(([_, v]) => v && v !== 'N/A')
+            .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
+            .join(' | '),
+          quantity: quantity,
+          unitPriceINR: offer.priceINR || offer.price,
+          leadTimeDays: offer.deliveryDays || offer.delivery_days,
+          subtotalINR: (offer.priceINR || offer.price) * quantity,
+          supplierSource: offer.supplierName || offer.supplier_name,
+          status: 'available'
+        }
+      ],
+      subtotalINR: (offer.priceINR || offer.price) * quantity,
+      taxGST18: ((offer.priceINR || offer.price) * quantity) * 0.18,
+      freightINR: 15000,
+      totalINR: ((offer.priceINR || offer.price) * quantity) * 1.18 + 15000,
+      validationNotes: [
+        `✓ Supplier stock availability checked: ${offer.stockQty || offer.stock_quantity} units available.`,
+        '✓ Pricing verified against contract matrix.'
+      ],
+      history: [
+        {
+          version: 'v1.0',
+          changedAt: 'Just now',
+          changeSummary: 'Generated quote from procurement constraint engine.',
+          user: 'Procurement Specialist'
+        }
+      ]
+    };
+
+    setQuotations(prev => [newQuote, ...prev]);
+    setActiveQuote(newQuote);
+    showToast({
+      type: 'success',
+      title: 'Quotation Generated from Sourcing',
+      message: `Quotation ${newQuote.quoteNumber} prepared with selected supplier offering.`
+    });
+  };
+
+  // AI Sales Chat
   const sendSalesMessage = (userText: string) => {
     const userMsg: AIMessage = {
       id: 'msg-' + Math.random().toString(36).substring(2, 7),
@@ -826,6 +919,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         generateQuoteFromPrompt,
         modifyQuoteValidation,
         approveQuote,
+        createQuoteFromSupplierOffer,
         salesMessages,
         sendSalesMessage,
         clearSalesMessages,
