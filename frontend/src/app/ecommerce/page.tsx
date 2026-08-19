@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-// Baseline Catalog Products (always available for instant switching)
+// Baseline Catalog Products
 const DEFAULT_CATALOG_PRODUCTS = [
   { product_code: 'VTX-550', name: 'Nova VectorFlow VTX-550 Motor' },
   { product_code: 'M-101', name: 'InduCore M-101 Motor (Spreadsheet Catalog)' },
@@ -40,12 +40,11 @@ const DEFAULT_CATALOG_PRODUCTS = [
 ];
 
 export default function EcommerceUpdatePage() {
-  const { showToast } = useApp();
+  const { showToast, products } = useApp();
 
   // Dynamic Products List from Database
   const [productsList, setProductsList] = useState<any[]>(DEFAULT_CATALOG_PRODUCTS);
   const [productCode, setProductCode] = useState('VTX-550');
-  const [customSkuInput, setCustomSkuInput] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('http://localhost:3000/storefront/vtx-550');
   const [apiEndpoint, setApiEndpoint] = useState('http://localhost:8000/api/ecommerce/demo-update-receiver');
   const [apiKey, setApiKey] = useState('');
@@ -63,7 +62,6 @@ export default function EcommerceUpdatePage() {
       .then(res => {
         const items = Array.isArray(res) ? res : (res?.items || []);
         if (items.length > 0) {
-          // Merge unique by product_code
           const merged = [...items];
           for (const d of DEFAULT_CATALOG_PRODUCTS) {
             if (!merged.some(m => m.product_code === d.product_code)) {
@@ -110,7 +108,6 @@ export default function EcommerceUpdatePage() {
     const cleanCode = code.trim().toUpperCase();
     setProductCode(cleanCode);
     
-    // Auto-update URL unless user has set a custom external vercel/deployed URL
     let nextUrl = websiteUrl;
     if (websiteUrl.includes('localhost:3000/storefront') || !websiteUrl) {
       nextUrl = `http://localhost:3000/storefront/${cleanCode.toLowerCase()}`;
