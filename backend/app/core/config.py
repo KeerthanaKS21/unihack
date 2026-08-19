@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
     
+    # LLM Settings (Optional API integration)
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    LLM_PROVIDER: str = "auto"
+    LLM_MODEL: str = "gpt-4o-mini"
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

@@ -268,9 +268,18 @@ export interface AIMessage {
     verified: boolean;
   }[];
   isMissingDataDemonstration?: boolean;
+  cardType?: 'product_specs' | 'supplier_comparison' | 'quotation_breakdown' | 'compatibility_matrix' | 'compliance_audit' | 'change_delta' | 'missing_data_alert';
+  cardData?: any;
   actionCard?: {
     title: string;
     label: string;
     url: string;
   };
+  actions?: {
+    title: string;
+    label: string;
+    url: string;
+  }[];
 }
+
+
