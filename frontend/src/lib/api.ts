@@ -249,6 +249,41 @@ export const api = {
       body: JSON.stringify({ quantity, delivery_days: deliveryDays, comments }),
     }),
 
+  postQuoteMatch: (data: {
+    company?: string;
+    contactPerson?: string;
+    email?: string;
+    phone?: string;
+    referenceNumber?: string;
+    requirementText: string;
+  }) =>
+    request<any>('/quotes/match', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  postQuoteSimulateRevision: (data: {
+    quoteNumber?: string;
+    productModel?: string;
+    supplierName?: string;
+    originalQuantity: number;
+    newQuantity: number;
+    originalDeliveryDays: number;
+    newDeliveryDays: number;
+    unitPrice?: number;
+  }) =>
+    request<any>('/quotes/simulate-revision', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Sales Assistant
+  postSalesAssistantChat: (message: string, conversationId?: string) =>
+    request<any>('/sales-assistant/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, conversationId }),
+    }),
+
   // E-commerce
   syncEcommerceCatalog: (productId: string | number) =>
     request<any>(`/ecommerce/sync/${productId}`, {
