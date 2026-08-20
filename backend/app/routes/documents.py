@@ -111,3 +111,11 @@ def approve_sync(
     """
     from app.services.version_detection_service import VersionDetectionService
     return VersionDetectionService.approve_synchronization(db, id, approved_by=approved_by, comments=comments)
+
+@router.delete("/{id}", summary="Delete document by ID")
+def delete_document(id: int, db: Session = Depends(get_db)):
+    """
+    Deletes an uploaded document record from the database and removes its stored file.
+    """
+    return DocumentService.delete_document(db, id)
+

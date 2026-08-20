@@ -9,6 +9,9 @@ from app.db.models.document import Document
 from app.db.models.product import Product
 from app.db.models.product import ProductAttribute, ProductVersion
 from app.db.models.change import Change, ChangeImpact
+from app.db.models.certificate import Certificate
+import logging
+logger = logging.getLogger("document_service")
 from app.utils.file_storage import save_uploaded_file
 from app.schemas.document import DocumentUploadResponse, DocumentResponse
 
@@ -259,7 +262,12 @@ class DocumentService:
             return
 
         # 2. Stage draft version
-        next_ver_num = f"v{float(current_ver.version_number.replace('v', '')) + 1.0}"
+        try:
+            ver_clean = current_ver.version_number.replace('v', '') if current_ver and current_ver.version_number else '1.0'
+            next_ver_num = f"v{float(ver_clean) + 1.0:.1f}"
+        except Exception:
+            next_ver_num = "v2.0"
+
         draft_version = ProductVersion(
             product_id=product.id,
             version_number=next_ver_num,
@@ -419,3 +427,47 @@ class DocumentService:
         if not doc:
             raise HTTPException(status_code=404, detail=f"Document ID {doc_id} not found")
         return doc
+
+    @staticmethod
+    def extract_product_intelligence(db: Session, document_id: int) -> ProductExtractionResponse:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
+
+        # Run extraction using LLM service
+        extraction_res = ProductExtractionService.extract_product_intelligence(
+            document_id=doc.id,
+            file_name=doc.original_file_name,
+            extracted_text=doc.extracted_text,
+            extracted_attributes=doc.extracted_attributes or {},
+            source_citations=doc.source_citations or []
+        )
+
+        # Persist structured product intelligence in document record
+        doc.extracted_product_data = extraction_res.model_dump(mode="json")
+        db.commit()
+        db.refresh(doc)
+        return extraction_res
+
+    @staticmethod
+    def delete_document(db: Session, document_id: int) -> Dict[str, Any]:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
+
+        # Unlink foreign key references if any
+        db.query(ProductVersion).filter(ProductVersion.source_document_id == document_id).update({ProductVersion.source_document_id: None})
+        db.query(ProductAttribute).filter(ProductAttribute.source_document_id == document_id).update({ProductAttribute.source_document_id: None})
+        db.query(Certificate).filter(Certificate.document_id == document_id).update({Certificate.document_id: None})
+
+        # Remove physical file if present
+        if doc.file_path and os.path.exists(doc.file_path):
+            try:
+                os.remove(doc.file_path)
+            except Exception as e:
+                logger.warning(f"Could not remove physical file {doc.file_path}: {e}")
+
+        file_name = doc.original_file_name or doc.file_name
+        db.delete(doc)
+        db.commit()
+        return {"success": True, "message": f"Document '{file_name}' deleted successfully", "id": document_id}

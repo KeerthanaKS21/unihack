@@ -101,6 +101,11 @@ export const api = {
     });
   },
 
+  deleteDocument: (id: number) =>
+    request<any>(`/documents/${id}`, {
+      method: 'DELETE',
+    }),
+
   // Products
   getProducts: (params?: {
     page?: number;
@@ -311,4 +316,42 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ message, conversationId }),
     }),
+
+  // E-commerce
+  syncEcommerceCatalog: (productId: string | number) =>
+    request<any>(`/ecommerce/sync/${productId}`, {
+      method: 'POST',
+    }),
+
+  inspectEcommerceWebsite: (websiteUrl: string, productCode?: string) =>
+    request<any>('/ecommerce/inspect-website', {
+      method: 'POST',
+      body: JSON.stringify({ website_url: websiteUrl, product_code: productCode }),
+    }),
+
+  pushEcommerceUpdate: (data: {
+    api_endpoint: string;
+    product_code: string;
+    api_key?: string;
+    website_url?: string;
+  }) =>
+    request<any>('/ecommerce/push-update', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Procurement
+  parseProcurementPrompt: (prompt: string) =>
+    request<any>('/procurement/parse-prompt', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
+
+  evaluateProcurement: (category: string, constraints: any[], quantity: number) =>
+    request<any>('/procurement/evaluate', {
+      method: 'POST',
+      body: JSON.stringify({ category, constraints, quantity }),
+    }),
+
+  getProcurementSchemas: () => request<any>('/procurement/schemas'),
 };

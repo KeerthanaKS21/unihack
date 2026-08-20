@@ -175,6 +175,9 @@ export default function EcommerceUpdatePage() {
 
     // Push to Production InduCore Vercel API
     try {
+      const data = await api.inspectEcommerceWebsite(wUrl, pCode);
+      if (data) {
+        setInspectionData(data);
       const prodRes = await fetch('https://inducore-website.vercel.app/api/integration/product-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -190,6 +193,19 @@ export default function EcommerceUpdatePage() {
 
     // Also push to local API for development sync
     try {
+      const data = await api.pushEcommerceUpdate({
+        api_endpoint: apiEndpoint,
+        product_code: productCode,
+        api_key: apiKey || undefined,
+        website_url: websiteUrl
+      });
+      setLastSyncResult(data);
+      setIsStorefrontUpdated(true);
+      showToast({
+        type: 'success',
+        title: `${environment === 'production' ? 'Production Website' : 'Storefront'} Updated Successfully`,
+        message: `Pushed verified customer-facing specifications for ${productCode} to ${apiEndpoint}.`
+      });
       const localRes = await fetch('http://localhost:5000/api/integration/product-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

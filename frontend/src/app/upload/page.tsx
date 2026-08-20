@@ -25,7 +25,8 @@ import {
   X,
   Layers,
   ArrowRight,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -148,6 +149,27 @@ export default function UploadIngestPage() {
       setTotalDocsCount(fallbackDocs.length);
     } finally {
       setLoadingDocs(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docId: number, docName: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${docName}" from upload history?`)) {
+      return;
+    }
+    try {
+      await api.deleteDocument(docId);
+      showToast({
+        type: 'success',
+        title: 'Document Deleted',
+        message: `"${docName}" removed from repository.`
+      });
+      fetchUploadedDocuments();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: err.message || 'Could not delete document'
+      });
     }
   };
 
@@ -756,6 +778,14 @@ Compliance: ISO 9001, IEC 60034, ATEX Zone 22, RoHS 3
                           >
                             <Download className="w-3.5 h-3.5" />
                           </a>
+
+                          <button
+                            onClick={() => handleDeleteDocument(doc.id, fileName)}
+                            title="Delete document"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
