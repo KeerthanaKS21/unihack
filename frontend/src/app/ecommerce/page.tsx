@@ -109,16 +109,8 @@ export default function EcommerceUpdatePage() {
     if (!pCode) return;
     setInspecting(true);
     try {
-      const res = await fetch('http://localhost:8000/api/ecommerce/inspect-website', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          website_url: wUrl,
-          product_code: pCode
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await api.inspectEcommerceWebsite(wUrl, pCode);
+      if (data) {
         setInspectionData(data);
       }
     } catch (err) {
@@ -142,20 +134,12 @@ export default function EcommerceUpdatePage() {
     if (!productCode) return;
     setSyncing(true);
     try {
-      const res = await fetch('http://localhost:8000/api/ecommerce/push-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          api_endpoint: apiEndpoint,
-          product_code: productCode,
-          api_key: apiKey || undefined,
-          website_url: websiteUrl
-        })
+      const data = await api.pushEcommerceUpdate({
+        api_endpoint: apiEndpoint,
+        product_code: productCode,
+        api_key: apiKey || undefined,
+        website_url: websiteUrl
       });
-      if (!res.ok) {
-        throw new Error(`Push failed (HTTP ${res.status})`);
-      }
-      const data = await res.json();
       setLastSyncResult(data);
       setIsStorefrontUpdated(true);
       showToast({

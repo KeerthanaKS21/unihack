@@ -110,6 +110,15 @@ class HealthService:
 
         return {
             "total_products": total_products_count,
+            "complete_products": complete_products,
+            "missing_data": missing_data,
+            "conflicts": conflicts,
+            "duplicates": duplicates,
+            "outdated": outdated,
+            "compliance_issues": compliance_issues,
+            "overall_health": max(0, min(100, overall_health))
+        }
+
     """
     Deterministic Enterprise Catalog Health & Data Governance Engine.
     Monitors ONLY real PostgreSQL database records.
