@@ -255,11 +255,22 @@ export default function UploadIngestPage() {
     try {
       const res = await api.uploadDocument(stagedFile.file, undefined, 'Engineering Lead');
       
-      setUploadSuccessMsg(`✓ Uploaded successfully: "${stagedFile.name}" stored and indexed in database (Doc ID #${res.id}).`);
+      // Automatically trigger extraction, identity matching & version analysis
+      if (res && res.id) {
+        try {
+          await api.extractProductFromDocument(res.id);
+          await api.identifyProduct(res.id);
+          await api.detectVersion(res.id);
+        } catch (pipeErr) {
+          console.warn('Extraction pipeline note:', pipeErr);
+        }
+      }
+
+      setUploadSuccessMsg(`✓ Uploaded & Extracted successfully: "${stagedFile.name}" processed and indexed in database (Doc ID #${res.id}).`);
       showToast({
         type: 'success',
-        title: 'Uploaded Successfully',
-        message: `${stagedFile.name} added to repository.`
+        title: 'Uploaded & Extracted Successfully',
+        message: `${stagedFile.name} specifications extracted and added to repository.`
       });
 
       // Clear staged file

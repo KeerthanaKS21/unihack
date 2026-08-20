@@ -369,14 +369,32 @@ Output MUST follow this exact JSON schema:
                 elif lower_fname.endswith((".pdf", ".docx")):
                     source_meta["source_type"] = "Document Text"
 
+        # 3. Fallback: Include all remaining key-value attributes from attrs dictionary
+        for k, v in attrs.items():
+            if not v or k.strip().lower() in {"id", "name", "category", "version"}:
+                continue
+            
+            clean_k = k.strip().lower().replace(" ", "_")
+            if clean_k not in seen_attributes:
+                seen_attributes.add(clean_k)
+                raw_val = str(v).strip()
+                parsed_val: Union[float, int, str] = raw_val
+                parsed_unit = None
+
+                num_unit_match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z%°\-\/~]+.*)?$', raw_val)
+                if num_unit_match:
+                    num_str = num_unit_match.group(1)
+                    parsed_val = float(num_str) if '.' in num_str else int(num_str)
+                    parsed_unit = num_unit_match.group(2).strip() if num_unit_match.group(2) else None
+
                 specifications.append(ProductSpecificationItem(
-                    attribute_name=attr_key,
+                    attribute_name=clean_k,
                     value=parsed_val,
                     unit=parsed_unit,
                     raw_value=raw_val,
-                    source_text=source_snippet or f"{attr_key}: {raw_val}",
-                    model_confidence=0.98,
-                    source=source_meta
+                    source_text=f"{k}: {raw_val}",
+                    model_confidence=0.95,
+                    source={"document_id": document_id, "source_type": "Metadata"}
                 ))
 
         return ProductExtractionResponse(

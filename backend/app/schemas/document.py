@@ -24,6 +24,8 @@ class DocumentUploadResponse(BaseModel):
     message: str = "Document uploaded successfully"
     is_ambiguous: Optional[bool] = False
     possible_matches: Optional[List[Dict[str, Any]]] = []
+    extracted_attributes: Optional[Dict[str, Any]] = {}
+    extracted_product_data: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

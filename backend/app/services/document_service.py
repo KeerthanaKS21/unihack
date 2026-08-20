@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import os
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc
@@ -13,9 +14,15 @@ from app.db.models.certificate import Certificate
 import logging
 logger = logging.getLogger("document_service")
 from app.utils.file_storage import save_uploaded_file
-from app.schemas.document import DocumentUploadResponse, DocumentResponse
+from app.schemas.document import DocumentUploadResponse, DocumentResponse, ProductExtractionResponse
 
 from app.services.pdf_processor import PDFProcessor
+from app.services.tabular_processor import TabularProcessor
+from app.services.docx_processor import DocxProcessor
+from app.services.image_processor import ImageProcessor
+from app.services.product_extraction_service import ProductExtractionService
+from app.services.product_identification_service import ProductIdentificationService
+from app.services.version_detection_service import VersionDetectionService
 
 NON_SPEC_FIELDS = {
     "id", "name", "category", "version", "supplier id", "supplier name",
@@ -49,48 +56,43 @@ class DocumentService:
         matched_product: Optional[Product] = None
         version_detected: Optional[str] = None
 
-        # 1. Process CSV files
-        if orig_lower.endswith(".csv") and os.path.exists(file_path):
+        # 1. Process Spreadsheets (CSV, Excel)
+        if (orig_lower.endswith(".csv") or orig_lower.endswith(".xlsx") or orig_lower.endswith(".xls")) and os.path.exists(file_path):
             try:
-                with open(file_path, "r", encoding="utf-8-sig", errors="ignore") as f:
-                    reader = csv.DictReader(f)
-                    rows = list(reader)
-                    if rows:
-                        first_row = rows[0]
-                        row_id = (first_row.get("ID") or first_row.get("id") or first_row.get("Model") or first_row.get("Product Code") or "").strip()
-                        row_ver = (first_row.get("Version") or first_row.get("version") or "2").strip()
-                        version_detected = f"v{row_ver}.0" if "." not in row_ver else f"v{row_ver}"
-
-                        # Extract specs
-                        specs: Dict[str, str] = {}
-                        for k, v in first_row.items():
-                            if v and k.strip().lower() not in NON_SPEC_FIELDS:
-                                specs[k.strip()] = str(v).strip()
-
-                        extracted_data["extracted_attributes"] = specs
-                        extracted_data["pages_count"] = len(rows)
-                        extracted_data["extracted_summary"] = f"Ingested {len(specs)} technical attributes from {orig_name}. Detected Version {version_detected}."
-
-                        # Match product
-                        if row_id:
-                            matched_product = db.query(Product).filter(Product.product_code == row_id).first()
-                            if not matched_product:
-                                # Create product dynamically if not found
-                                prod_name = first_row.get("Name") or row_id
-                                prod_cat = first_row.get("Category") or "Industrial Equipment"
-                                matched_product = Product(
-                                    product_code=row_id,
-                                    name=prod_name,
-                                    category=prod_cat,
-                                    manufacturer="InduCore",
-                                    status="ACTIVE",
-                                    health_score=95
-                                )
-                                db.add(matched_product)
-                                db.commit()
-                                db.refresh(matched_product)
-            except Exception as csv_err:
-                extracted_data["extracted_summary"] = f"CSV read note: {csv_err}"
+                tabular_res = TabularProcessor.extract_tabular_content(file_path, orig_name)
+                if tabular_res:
+                    extracted_data.update(tabular_res)
+                    if tabular_res.get("extracted_attributes"):
+                        extracted_data["extracted_attributes"] = tabular_res["extracted_attributes"]
+                
+                # If CSV, also extract first-row specs & check product match
+                if orig_lower.endswith(".csv"):
+                    with open(file_path, "r", encoding="utf-8-sig", errors="ignore") as f:
+                        reader = csv.DictReader(f)
+                        rows = list(reader)
+                        if rows:
+                            first_row = rows[0]
+                            row_id = (first_row.get("ID") or first_row.get("id") or first_row.get("Model") or first_row.get("Product Code") or "").strip()
+                            row_ver = (first_row.get("Version") or first_row.get("version") or "2").strip()
+                            version_detected = f"v{row_ver}.0" if "." not in row_ver else f"v{row_ver}"
+                            if row_id and not matched_product:
+                                matched_product = db.query(Product).filter(Product.product_code == row_id).first()
+                                if not matched_product:
+                                    prod_name = first_row.get("Name") or row_id
+                                    prod_cat = first_row.get("Category") or "Industrial Equipment"
+                                    matched_product = Product(
+                                        product_code=row_id,
+                                        name=prod_name,
+                                        category=prod_cat,
+                                        manufacturer="InduCore",
+                                        status="ACTIVE",
+                                        health_score=95
+                                    )
+                                    db.add(matched_product)
+                                    db.commit()
+                                    db.refresh(matched_product)
+            except Exception as tabular_err:
+                extracted_data["extracted_summary"] = f"Tabular read note: {tabular_err}"
 
         # 2. Process PDF files
         elif orig_lower.endswith(".pdf") and os.path.exists(file_path):
@@ -100,6 +102,24 @@ class DocumentService:
                     extracted_data.update(pdf_res)
             except Exception as pdf_err:
                 extracted_data["extracted_summary"] = f"PDF stored. Extraction note: {pdf_err}"
+
+        # 3. Process DOCX files
+        elif (orig_lower.endswith(".docx") or orig_lower.endswith(".doc")) and os.path.exists(file_path):
+            try:
+                docx_res = DocxProcessor.process_docx(file_path)
+                if docx_res:
+                    extracted_data.update(docx_res)
+            except Exception as docx_err:
+                extracted_data["extracted_summary"] = f"DOCX stored. Extraction note: {docx_err}"
+
+        # 4. Process Image files (OCR)
+        elif (orig_lower.endswith(".png") or orig_lower.endswith(".jpg") or orig_lower.endswith(".jpeg")) and os.path.exists(file_path):
+            try:
+                img_res = ImageProcessor.process_image(file_path)
+                if img_res:
+                    extracted_data.update(img_res)
+            except Exception as img_err:
+                extracted_data["extracted_summary"] = f"Image stored. Extraction note: {img_err}"
 
         # 3. Match product if not matched yet
         if not matched_product:
@@ -113,7 +133,16 @@ class DocumentService:
                         matched_product = p
                         break
 
-        # 4. Save Document record
+        # 4. Extract metadata fields safely
+        is_ambiguous = extracted_data.get("is_ambiguous", False)
+        possible_matches = extracted_data.get("possible_matches", [])
+        confidence = extracted_data.get("match_confidence", 0.95)
+        pages_count = extracted_data.get("pages_count", 1)
+        extracted_summary = extracted_data.get("extracted_summary", f"Ingested {orig_name} with verified processing.")
+        extracted_attributes = extracted_data.get("extracted_attributes", {})
+        source_citations = extracted_data.get("source_citations", [])
+
+        # 5. Save Document record
         doc_record = Document(
             file_name=file_meta["file_name"],
             original_file_name=orig_name,
@@ -139,7 +168,16 @@ class DocumentService:
         db.commit()
         db.refresh(doc_record)
 
-        # 5. Detect changes against current product attributes
+        # 5. Automatically run structured product intelligence extraction pipeline
+        try:
+            DocumentService.extract_product_intelligence(db, doc_record.id)
+            ProductIdentificationService.identify_product_for_document(db, doc_record.id)
+            VersionDetectionService.analyze_document_version(db, doc_record.id)
+            db.refresh(doc_record)
+        except Exception as pipe_err:
+            logger.warning(f"Automatic extraction pipeline note for Doc ID #{doc_record.id}: {pipe_err}")
+
+        # 6. Detect changes against current product attributes
         if matched_product and extracted_data.get("extracted_attributes"):
             new_attrs = extracted_data["extracted_attributes"]
             
