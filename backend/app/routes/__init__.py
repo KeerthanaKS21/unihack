@@ -8,6 +8,7 @@ from app.routes.catalog_health import router as catalog_health_router
 from app.routes.catalog_issues import router as catalog_issues_router
 from app.routes.suppliers import router as suppliers_router
 from app.routes.certificates import router as certificates_router
+from app.routes.compliance import router as compliance_router
 from app.routes.compatibility import router as compatibility_router
 from app.routes.quotes import router as quotes_router
 from app.routes.dashboard import router as dashboard_router
@@ -25,6 +26,7 @@ api_router.include_router(catalog_health_router)
 api_router.include_router(catalog_issues_router)
 api_router.include_router(suppliers_router)
 api_router.include_router(certificates_router)
+api_router.include_router(compliance_router)
 api_router.include_router(compatibility_router)
 api_router.include_router(quotes_router)
 api_router.include_router(catalog_ai_router)

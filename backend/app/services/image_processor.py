@@ -15,7 +15,6 @@ def get_easyocr_reader():
     if _easyocr_reader is None:
         try:
             import easyocr
-            # Initialize with English and disable verbose console print
             _easyocr_reader = easyocr.Reader(['en'], gpu=False, verbose=False)
         except Exception as e:
             logger.warning(f"EasyOCR initialization note: {e}")
@@ -31,9 +30,9 @@ class ImageProcessor:
 
     NAMEPLATE_PATTERNS = [
         # Identification
-        (r'(?:Model(?:\s*No\.?|\s*Number)?|Type|Designation)\s*[:=\-]?\s*([A-Z0-9\-_/\.]{3,30})', 'Model Identifier'),
+        (r'(?:Model(?:\s*No\.?|\s*Number)?|Type|Designation|Part\s*No\.?)\s*[:=\-]?\s*([A-Z0-9\-_/\.]{3,30})', 'Model Identifier'),
         (r'(?:Serial\s*(?:No\.?|Number)|S/N|Ser\.\s*No\.?)\s*[:=\-]?\s*([A-Za-z0-9\-_\s]{4,25})', 'Serial Number'),
-        (r'(?:Make|Manufacturer|Brand)\s*[:=\-]?\s*([A-Za-z0-9\s&\.\-]{3,30})', 'Manufacturer'),
+        (r'(?:Make|Manufacturer|Brand|Vendor)\s*[:=\-]?\s*([A-Za-z0-9\s&\.\-]{3,30})', 'Manufacturer'),
 
         # Electrical Ratings
         (r'(?:Power|Output|Rating|kW|HP)\s*[:=\-]?\s*([0-9\.]+\s*(?:kW|HP|W|MW|kVA))', 'Rated Power'),
@@ -55,7 +54,9 @@ class ImageProcessor:
         (r'(?:Duty|Rating)\s*[:=\-]?\s*(S[1-9]|Continuous|Intermittent|S1\s*Continuous)', 'Duty Cycle'),
         (r'(?:Eff(?:\.|iciency)?|IE\s*Class)\s*[:=\-]?\s*(IE[1-5]|[0-9\.]+\s*%)', 'Full Load Efficiency'),
         (r'(?:Amb(?:\.|ient)?(?:\s*Temp)?)\s*[:=\-]?\s*([\-0-9\.\s\+to°degCF]+)', 'Ambient Temperature'),
-        (r'(?:Standard|Compliance)\s*[:=\-]?\s*([A-Za-z0-9\-\s\/\.\(\)]{3,30})', 'Compliance Standard')
+        (r'(?:Standard|Compliance)\s*[:=\-]?\s*([A-Za-z0-9\-\s\/\.\(\)]{3,30})', 'Compliance Standard'),
+        (r'(?:ATEX|Hazardous|Ex)\s*[:=\-]?\s*([A-Za-z0-9\s\/\-_]{3,30})', 'ATEX Rating'),
+        (r'(?:RoHS)\s*[:=\-]?\s*([A-Za-z0-9\s\/\-_]{3,30})', 'RoHS Status')
     ]
 
     @staticmethod
@@ -87,14 +88,12 @@ class ImageProcessor:
                 extracted_attributes["Image Format"] = f"{img_format} ({img_mode})"
                 extracted_attributes["Dimensions"] = f"{width} x {height} px"
 
-                # Preprocessing for OCR
+                # Image Preprocessing for enhanced OCR recognition
                 gray = img.convert('L')
                 enhancer = ImageEnhance.Contrast(gray)
-                enhanced_img = enhancer.enhance(1.8)
+                enhanced_img = enhancer.enhance(2.0)
 
-                # =========================================================================
                 # 1. ATTEMPT EASYOCR (Pure Python Deep Learning OCR)
-                # =========================================================================
                 reader = get_easyocr_reader()
                 if reader:
                     try:
@@ -106,9 +105,7 @@ class ImageProcessor:
                     except Exception as easy_err:
                         logger.warning(f"EasyOCR run error: {easy_err}")
 
-                # =========================================================================
                 # 2. ATTEMPT PYTESSERACT OCR FALLBACK
-                # =========================================================================
                 if not ocr_lines:
                     try:
                         import pytesseract
@@ -131,9 +128,6 @@ class ImageProcessor:
         else:
             ocr_text = f"[INDUSTRIAL NAMEPLATE OCR STREAM]\nImage File: {filename}\nResolution: {width}x{height} px\nVisual Mode: Standard Industrial Capture\n"
 
-        # =========================================================================
-        # PARSE SPECIFICATIONS FROM OCR TEXT
-        # =========================================================================
         full_text_to_parse = "\n".join(ocr_lines) if ocr_lines else ocr_text
 
         # 1. Regex Pattern Matching across full OCR corpus
@@ -168,7 +162,6 @@ class ImageProcessor:
                                 "confidence": 0.92
                             })
 
-        # Guarantee minimum grounding citation
         if not source_citations:
             source_citations.append({
                 "page": 1,
