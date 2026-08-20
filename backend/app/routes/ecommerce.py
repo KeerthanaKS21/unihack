@@ -13,7 +13,11 @@ from app.db.database import get_db
 from app.db.models.product import Product, ProductVersion
 from app.db.models.change import Change, ChangeImpact
 from app.db.models.approval import Approval
-from app.services.ecommerce_sync_service import EcommerceSyncService
+from app.services.ecommerce_sync_service import (
+    EcommerceSyncService,
+    is_supplier_commercial_field,
+    is_metadata_field
+)
 
 router = APIRouter(prefix="/ecommerce", tags=["E-commerce"])
 logger = logging.getLogger("product_intelligence")
@@ -22,9 +26,16 @@ ATTRIBUTE_MAP = {
     "rated output": "power",
     "rated power": "power",
     "power": "power",
+    "input power": "power",
     "synchronous speed": "speed",
     "full load speed": "speed",
+    "input speed": "inputSpeed",
     "speed": "speed",
+    "output speed": "outputSpeed",
+    "gear ratio": "ratio",
+    "ratio": "ratio",
+    "output torque": "torque",
+    "torque": "torque",
     "gross weight": "weight",
     "weight": "weight",
     "rated voltage": "voltage",
@@ -41,6 +52,11 @@ ATTRIBUTE_MAP = {
     "operating temperature": "temperature",
     "temperature": "temperature",
     "material": "material",
+    "housing material": "housingMaterial",
+    "lubricant": "lubricant",
+    "lubrication": "lubricant",
+    "mounting": "mounting",
+    "mount": "mounting",
     "connection": "connection",
     "capacity": "capacity",
     "noise level": "noiseLevel",
@@ -54,15 +70,15 @@ ATTRIBUTE_MAP = {
 @router.post("/inspect-website", summary="Inspect live website URL and compare against AI-verified master data")
 def inspect_live_website(
     website_url: str = Body(..., embed=True, description="The live product page URL"),
-    product_code: Optional[str] = Body("VTX-550", embed=True, description="Target product code"),
+    product_code: Optional[str] = Body("GB-100", embed=True, description="Target product code"),
     db: Session = Depends(get_db)
 ):
     return EcommerceSyncService.inspect_live_website(db, website_url, product_code)
 
 @router.post("/push-update", summary="Push verified technical specification update to live website API endpoint")
 def push_update_to_storefront(
-    api_endpoint: str = Body(..., embed=True, description="Target website update webhook/API endpoint"),
-    product_code: Optional[str] = Body("VTX-550", embed=True, description="Product code to update"),
+    api_endpoint: str = Body("http://localhost:5000/api/integration/product-update", embed=True, description="Target website update webhook/API endpoint"),
+    product_code: Optional[str] = Body("GB-100", embed=True, description="Product code to update"),
     api_key: Optional[str] = Body(None, embed=True, description="Optional bearer token or secret key"),
     db: Session = Depends(get_db)
 ):
@@ -121,50 +137,22 @@ def sync_ecommerce(
         Change.product_id == product.id
     ).all()
 
-    # Find matching storefront product
-    # Identification: Match product_code against ID or Model case-insensitively
-    matching_ecom_products = []
-    for p in storefront_products:
-        p_id = str(p.get("id", "")).lower()
-        p_model = str(p.get("model", "")).lower()
-        target_code = product.product_code.lower()
-        if p_id == target_code or p_model == target_code:
-            matching_ecom_products.append(p)
-
-    if len(matching_ecom_products) > 1:
-        raise HTTPException(
-            status_code=400,
-            detail=f"E-commerce sync failed: ambiguous match on storefront for product code '{product.product_code}'."
-        )
-    elif len(matching_ecom_products) == 1:
-        matched_ecom_prod = matching_ecom_products[0]
-    else:
-        matched_ecom_prod = None
-
-    if not matched_ecom_prod:
-        # If not found directly, reject request
-        raise HTTPException(
-            status_code=404,
-            detail=f"Website update failed: product '{product.product_code}' could not be identified on storefront."
-        )
-
-    expected_version = matched_ecom_prod.get("version", 1)
-
-    # 5. Build updates dictionary dynamically (generic, works for any attribute)
     updates_dict = {}
     if changes:
         for c in changes:
-            clean_name = c.attribute_name.strip().lower()
-            key = ATTRIBUTE_MAP.get(clean_name, c.attribute_name.strip())
-            updates_dict[key] = c.new_value
+            if not is_supplier_commercial_field(c.attribute_name) and not is_metadata_field(c.attribute_name):
+                clean_name = c.attribute_name.strip().lower()
+                key = ATTRIBUTE_MAP.get(clean_name, c.attribute_name.strip())
+                updates_dict[key] = c.new_value
     else:
         # Pull from current active product attributes
         curr_v = db.query(ProductVersion).filter(ProductVersion.product_id == product.id, ProductVersion.is_current == True).first()
         if curr_v:
             for attr in curr_v.attributes:
-                clean_name = attr.attribute_name.strip().lower()
-                key = ATTRIBUTE_MAP.get(clean_name, attr.attribute_name.strip())
-                updates_dict[key] = attr.attribute_value
+                if not is_supplier_commercial_field(attr.attribute_name) and not is_metadata_field(attr.attribute_name):
+                    clean_name = attr.attribute_name.strip().lower()
+                    key = ATTRIBUTE_MAP.get(clean_name, attr.attribute_name.strip())
+                    updates_dict[key] = attr.attribute_value
 
     current_version_rec = db.query(ProductVersion).filter(
         ProductVersion.product_id == product.id,
@@ -197,7 +185,7 @@ def sync_ecommerce(
         }
     }
 
-    dest_url = target_url or "https://inducore-website.vercel.app/api/integration/product-update"
+    dest_url = target_url or "http://localhost:5000/api/integration/product-update"
     try:
         payload_data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
