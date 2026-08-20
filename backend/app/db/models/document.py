@@ -31,7 +31,7 @@ class Document(Base):
 
     # Relationships
     product = relationship("Product", back_populates="documents")
-    certificates = relationship("Certificate", back_populates="document")
+    certificates = relationship("Certificate", foreign_keys="[Certificate.document_id]", back_populates="document")
 
     @property
     def is_ambiguous(self) -> bool:

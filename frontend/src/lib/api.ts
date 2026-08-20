@@ -184,10 +184,67 @@ export const api = {
 
   getCatalogIssueById: (id: number) => request<any>(`/catalog-issues/${id}`),
 
-  resolveCatalogIssue: (issueId: number, resolutionValue: string, comments?: string) =>
+  resolveCatalogIssue: (issueId: number, value: string, notes?: string) =>
     request<any>(`/catalog-issues/${issueId}/resolve`, {
       method: 'POST',
-      body: JSON.stringify({ resolution_value: resolutionValue, comments, resolved_by: 'Engineering Lead' }),
+      body: JSON.stringify({ value, notes, resolved_by: 'Engineering Lead' }),
+    }),
+
+  // Compliance Auditing
+  getComplianceSummary: () => request<any>('/compliance/summary'),
+  
+  getComplianceProducts: (params?: { status?: string; search?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.search) query.set('search', params.search);
+    const qs = query.toString();
+    return request<any[]>(`/compliance/products${qs ? `?${qs}` : ''}`);
+  },
+
+  getComplianceProductDetail: (productId: number) =>
+    request<any>(`/compliance/products/${productId}`),
+
+  uploadAndMatchCertificate: (fileName: string, productId?: number) => {
+    const formData = new FormData();
+    formData.append('file_name', fileName);
+    if (productId) formData.append('product_id', String(productId));
+    return request<any>('/compliance/upload-match', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  uploadComplianceFile: (file: File, productId?: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (productId) formData.append('product_id', String(productId));
+    return request<any>('/compliance/upload-file', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  resolveComplianceAction: (data: {
+    certificate_id?: number;
+    product_id?: number;
+    action_type: string;
+    value?: string;
+    standard?: string;
+    certification_body?: string;
+    issue_date?: string;
+    expiry_date?: string;
+    scope?: string;
+    spec_value?: string;
+    temp_range?: string;
+    atex_rating?: string;
+    rohs_status?: string;
+    safety_standard?: string;
+    notes?: string;
+    replacement_document_id?: number;
+  }) =>
+    request<any>('/compliance/resolve', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   // Suppliers
