@@ -58,7 +58,7 @@ export const GlobalSearchModal: React.FC = () => {
   );
 
   const matchedIssues = catalogIssues.filter(
-    i => i.title.toLowerCase().includes(q) || i.productModel.toLowerCase().includes(q) || i.field.toLowerCase().includes(q)
+    i => i.title.toLowerCase().includes(q) || i.productModel.toLowerCase().includes(q) || (i.field && i.field.toLowerCase().includes(q))
   );
 
   const matchedSuppliers = supplierOffers.filter(

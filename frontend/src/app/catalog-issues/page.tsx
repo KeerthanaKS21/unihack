@@ -49,6 +49,19 @@ function CatalogIssuesContent() {
   const [editingIssueId, setEditingIssueId] = useState<number | null>(null);
   const [resolvingId, setResolvingId] = useState<number | null>(null);
 
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({
+    all: 0,
+    missing: 0,
+    conflict: 0,
+    duplicate: 0,
+    outdated: 0,
+    invalid_unit: 0,
+    wrong_category: 0,
+    compliance: 0,
+    broken_relationship: 0,
+    low_confidence: 0
+  });
+
   const fetchIssues = async () => {
     setLoading(true);
     try {
@@ -60,6 +73,41 @@ function CatalogIssuesContent() {
       });
       setIssuesList(res.items || []);
       setTotalCount(res.total || 0);
+
+      // Fetch health summary or full open issues list for exact tab counts
+      const health = await api.getCatalogHealth().catch(() => null);
+      if (health && health.issues) {
+        const iss = health.issues;
+        setTabCounts({
+          all: health.products_with_issues || (iss.missing_data + iss.conflicts + iss.duplicates + iss.outdated + iss.invalid_units + iss.wrong_category + iss.compliance + iss.broken_relationships + iss.low_confidence),
+          missing: iss.missing_data || 0,
+          conflict: iss.conflicts || 0,
+          duplicate: iss.duplicates || 0,
+          outdated: iss.outdated || 0,
+          invalid_unit: (iss.invalid_units || 0) + (iss.invalid_values || 0),
+          wrong_category: iss.wrong_category || 0,
+          compliance: iss.compliance || 0,
+          broken_relationship: iss.broken_relationships || 0,
+          low_confidence: iss.low_confidence || 0
+        });
+      } else {
+        const allRes = await api.getCatalogIssues({ status: statusFilter === 'all' ? undefined : statusFilter, limit: 500 }).catch(() => null);
+        if (allRes && Array.isArray(allRes.items)) {
+          const items = allRes.items;
+          setTabCounts({
+            all: items.length,
+            missing: items.filter(i => i.issue_type === 'missing').length,
+            conflict: items.filter(i => i.issue_type === 'conflict').length,
+            duplicate: items.filter(i => i.issue_type === 'duplicate').length,
+            outdated: items.filter(i => i.issue_type === 'outdated').length,
+            invalid_unit: items.filter(i => i.issue_type === 'invalid_unit' || i.issue_type === 'invalid_value').length,
+            wrong_category: items.filter(i => i.issue_type === 'wrong_category').length,
+            compliance: items.filter(i => i.issue_type === 'compliance').length,
+            broken_relationship: items.filter(i => i.issue_type === 'broken_relationship').length,
+            low_confidence: items.filter(i => i.issue_type === 'low_confidence').length
+          });
+        }
+      }
     } catch (err) {
       console.warn('Failed to load issues from backend:', err);
     } finally {
@@ -149,19 +197,33 @@ function CatalogIssuesContent() {
       {/* Navigation Tabs Filter Bar */}
       <div className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <span>{tab.label}</span>
-            </button>
-          ))}
+          {tabs.map(tab => {
+            const count = tabCounts[tab.id] ?? 0;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap inline-flex items-center gap-2 text-xs font-semibold ${
+                  activeTab === tab.id
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded-full transition-colors ${
+                    activeTab === tab.id
+                      ? 'bg-slate-700 text-slate-100'
+                      : count > 0
+                      ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Status Filter & Search */}

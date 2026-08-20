@@ -269,7 +269,6 @@ class DocumentService:
             source_document_id=doc_record.id,
             is_current=False,
             status="DRAFT"
-            message="Document uploaded, stored, and processed through intelligence pipeline."
         )
         db.add(draft_version)
         db.commit()
