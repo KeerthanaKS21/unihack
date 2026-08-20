@@ -133,7 +133,6 @@ export const api = {
   getProductChanges: (id: number) => request<any[]>(`/products/${id}/changes`),
   getProductCompliance: (id: number) => request<any[]>(`/products/${id}/compliance`),
   getProductCompatibility: (id: number) => request<any[]>(`/products/${id}/compatibility`),
-  approveProductSync: (id: number) => request<any>(`/products/${id}/approve-sync`, { method: 'POST' }),
 
   // Changes & Change Impacts
   getChanges: (params?: { product_id?: number; status?: string }) => {
@@ -164,7 +163,6 @@ export const api = {
 
   // Catalog Health & Issues
   getCatalogHealth: () => request<any>('/catalog-health'),
-  scanCatalogHealth: () => request<any>('/catalog-health/scan', { method: 'POST' }),
 
   getCatalogIssues: (params?: {
     page?: number;
@@ -173,7 +171,6 @@ export const api = {
     status?: string;
     severity?: string;
     product_id?: number;
-    search?: string;
   }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
@@ -182,17 +179,73 @@ export const api = {
     if (params?.status && params.status !== 'all') query.set('status', params.status);
     if (params?.severity && params.severity !== 'all') query.set('severity', params.severity);
     if (params?.product_id) query.set('product_id', String(params.product_id));
-    if (params?.search) query.set('search', params.search);
     const qs = query.toString();
     return request<{ total: number; page: number; limit: number; items: any[] }>(`/catalog-issues${qs ? `?${qs}` : ''}`);
   },
 
   getCatalogIssueById: (id: number) => request<any>(`/catalog-issues/${id}`),
 
-  resolveCatalogIssue: (issueId: number, resolutionValue: string, comments?: string) =>
+  resolveCatalogIssue: (issueId: number, value: string, notes?: string) =>
     request<any>(`/catalog-issues/${issueId}/resolve`, {
       method: 'POST',
-      body: JSON.stringify({ resolution_value: resolutionValue, comments, resolved_by: 'Engineering Lead' }),
+      body: JSON.stringify({ value, notes, resolved_by: 'Engineering Lead' }),
+    }),
+
+  // Compliance Auditing
+  getComplianceSummary: () => request<any>('/compliance/summary'),
+  
+  getComplianceProducts: (params?: { status?: string; search?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.search) query.set('search', params.search);
+    const qs = query.toString();
+    return request<any[]>(`/compliance/products${qs ? `?${qs}` : ''}`);
+  },
+
+  getComplianceProductDetail: (productId: number) =>
+    request<any>(`/compliance/products/${productId}`),
+
+  uploadAndMatchCertificate: (fileName: string, productId?: number) => {
+    const formData = new FormData();
+    formData.append('file_name', fileName);
+    if (productId) formData.append('product_id', String(productId));
+    return request<any>('/compliance/upload-match', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  uploadComplianceFile: (file: File, productId?: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (productId) formData.append('product_id', String(productId));
+    return request<any>('/compliance/upload-file', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  resolveComplianceAction: (data: {
+    certificate_id?: number;
+    product_id?: number;
+    action_type: string;
+    value?: string;
+    standard?: string;
+    certification_body?: string;
+    issue_date?: string;
+    expiry_date?: string;
+    scope?: string;
+    spec_value?: string;
+    temp_range?: string;
+    atex_rating?: string;
+    rohs_status?: string;
+    safety_standard?: string;
+    notes?: string;
+    replacement_document_id?: number;
+  }) =>
+    request<any>('/compliance/resolve', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   // Suppliers
@@ -258,37 +311,8 @@ export const api = {
       body: JSON.stringify({ quantity, delivery_days: deliveryDays, comments }),
     }),
 
-  postQuoteMatch: (data: {
-    company?: string;
-    contactPerson?: string;
-    email?: string;
-    phone?: string;
-    referenceNumber?: string;
-    requirementText: string;
-  }) =>
-    request<any>('/quotes/match', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  postQuoteSimulateRevision: (data: {
-    quoteNumber?: string;
-    productModel?: string;
-    supplierName?: string;
-    originalQuantity: number;
-    newQuantity: number;
-    originalDeliveryDays: number;
-    newDeliveryDays: number;
-    unitPrice?: number;
-  }) =>
-    request<any>('/quotes/simulate-revision', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  // Sales Assistant
-  postSalesAssistantChat: (message: string, conversationId?: string) =>
-    request<any>('/sales-assistant/chat', {
+  askCatalogChat: (message: string, conversationId?: string) =>
+    request<any>('/catalog-ai/chat', {
       method: 'POST',
       body: JSON.stringify({ message, conversationId }),
     }),
@@ -331,4 +355,3 @@ export const api = {
 
   getProcurementSchemas: () => request<any>('/procurement/schemas'),
 };
-

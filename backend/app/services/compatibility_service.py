@@ -1,11 +1,265 @@
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
+import re
+from datetime import datetime
 from fastapi import HTTPException
+
 from app.db.models.compatibility import Compatibility
-from app.db.models.product import Product
-from app.schemas.compatibility import CompatibilityCreate, CompatibilityUpdate
+from app.db.models.product import Product, ProductVersion, ProductAttribute
+from app.db.models.document import Document
+from app.db.models.certificate import Certificate
+from app.schemas.compatibility import (
+    CompatibilityCreate,
+    CompatibilityUpdate,
+    CompatibilityEvaluationResponse,
+    AttributeComparison,
+    AlternativeProductRecommendation
+)
 
 class CompatibilityService:
+    @staticmethod
+    def _extract_product_specs(db: Session, product_id: int) -> Dict[str, Any]:
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            return {}
+
+        current_ver = db.query(ProductVersion).filter(
+            ProductVersion.product_id == product.id,
+            ProductVersion.is_current == True
+        ).first()
+
+        attrs = {}
+        sources = {}
+
+        if current_ver:
+            for attr in current_ver.attributes:
+                k = attr.attribute_name.lower().strip()
+                attrs[k] = attr.attribute_value
+                doc = db.query(Document).filter(Document.id == attr.source_document_id).first() if attr.source_document_id else None
+                sources[k] = doc.original_file_name if doc else "Product Master Catalog"
+
+        # Check attached certificates for compliance declarations
+        certs = db.query(Certificate).filter(Certificate.product_id == product.id).all()
+        for c in certs:
+            if c.standard:
+                attrs["compliance_standard"] = c.standard
+                sources["compliance_standard"] = f"Certificate {c.certificate_number} ({c.certification_body or 'Verified Body'})"
+
+        return {
+            "product": product,
+            "version": current_ver,
+            "attributes": attrs,
+            "sources": sources
+        }
+
+    @staticmethod
+    def evaluate_pair(db: Session, product_a_id: int, product_b_id: int) -> CompatibilityEvaluationResponse:
+        data_a = CompatibilityService._extract_product_specs(db, product_a_id)
+        data_b = CompatibilityService._extract_product_specs(db, product_b_id)
+
+        if not data_a or not data_b:
+            raise HTTPException(status_code=404, detail="One or both products not found in catalog")
+
+        p_a: Product = data_a["product"]
+        p_b: Product = data_b["product"]
+
+        attrs_a = data_a["attributes"]
+        attrs_b = data_b["attributes"]
+
+        src_a = data_a["sources"]
+        src_b = data_b["sources"]
+
+        comparisons: List[AttributeComparison] = []
+        missing_attrs: List[str] = []
+        conflicting_attrs: List[Dict[str, Any]] = []
+
+        is_motor_a = "motor" in p_a.category.lower() or "motor" in p_a.name.lower()
+        is_ctrl_a = "drive" in p_a.category.lower() or "controller" in p_a.category.lower() or "vfd" in p_a.name.lower()
+        
+        is_motor_b = "motor" in p_b.category.lower() or "motor" in p_b.name.lower()
+        is_ctrl_b = "drive" in p_b.category.lower() or "controller" in p_b.category.lower() or "vfd" in p_b.name.lower()
+
+        # Extract numeric power
+        def parse_power(val_str: Optional[str]) -> Optional[float]:
+            if not val_str: return None
+            m = re.search(r"(\d+(?:\.\d+)?)\s*(kW|HP|W)", val_str, re.IGNORECASE)
+            if not m: return None
+            v = float(m.group(1))
+            unit = m.group(2).upper()
+            if unit == "HP": return v * 0.7457
+            if unit == "W": return v / 1000.0
+            return v
+
+        pow_a = parse_power(attrs_a.get("rated power") or attrs_a.get("power") or attrs_a.get("output power"))
+        pow_b = parse_power(attrs_b.get("rated power") or attrs_b.get("power") or attrs_b.get("max power") or attrs_b.get("supported power"))
+
+        # 1. Power Requirement Check
+        if (is_motor_a and is_ctrl_b) or (is_ctrl_a and is_motor_b):
+            motor_p = pow_a if is_motor_a else pow_b
+            ctrl_p = pow_b if is_motor_a else pow_a
+            
+            val_a_str = attrs_a.get("rated power") or attrs_a.get("power") or "Unspecified"
+            val_b_str = attrs_b.get("max power") or attrs_b.get("power") or attrs_b.get("rated power") or "Unspecified"
+
+            if motor_p is None or ctrl_p is None:
+                comparisons.append(AttributeComparison(
+                    attribute_name="Power Capacity",
+                    is_mandatory=True,
+                    product_a_value=val_a_str,
+                    product_a_source=src_a.get("power", "Datasheet"),
+                    product_b_value=val_b_str,
+                    product_b_source=src_b.get("power", "Datasheet"),
+                    status="MISSING",
+                    explanation="Power rating is missing in verified product specifications."
+                ))
+                missing_attrs.append("Power Capacity")
+            elif motor_p > ctrl_p:
+                diff = round(motor_p - ctrl_p, 1)
+                comparisons.append(AttributeComparison(
+                    attribute_name="Power Capacity",
+                    is_mandatory=True,
+                    product_a_value=val_a_str,
+                    product_a_source=src_a.get("power", "Datasheet"),
+                    product_b_value=val_b_str,
+                    product_b_source=src_b.get("power", "Datasheet"),
+                    status="FAIL",
+                    explanation=f"Motor power ({motor_p} kW) exceeds maximum controller rating ({ctrl_p} kW) by {diff} kW."
+                ))
+            else:
+                comparisons.append(AttributeComparison(
+                    attribute_name="Power Capacity",
+                    is_mandatory=True,
+                    product_a_value=val_a_str,
+                    product_a_source=src_a.get("power", "Datasheet"),
+                    product_b_value=val_b_str,
+                    product_b_source=src_b.get("power", "Datasheet"),
+                    status="PASS",
+                    explanation=f"Controller supported power ({ctrl_p} kW) satisfies motor requirement ({motor_p} kW)."
+                ))
+
+        # 2. Voltage Check
+        volt_a = attrs_a.get("voltage") or attrs_a.get("rated voltage") or attrs_a.get("operating voltage")
+        volt_b = attrs_b.get("voltage") or attrs_b.get("rated voltage") or attrs_b.get("input voltage")
+
+        if not volt_a or not volt_b:
+            comparisons.append(AttributeComparison(
+                attribute_name="Operating Voltage",
+                is_mandatory=True,
+                product_a_value=volt_a or "Unspecified",
+                product_a_source=src_a.get("voltage", "Datasheet"),
+                product_b_value=volt_b or "Unspecified",
+                product_b_source=src_b.get("voltage", "Datasheet"),
+                status="MISSING",
+                explanation="Operating voltage could not be verified from available product specifications."
+            ))
+            missing_attrs.append("Operating Voltage")
+        else:
+            comparisons.append(AttributeComparison(
+                attribute_name="Operating Voltage",
+                is_mandatory=True,
+                product_a_value=volt_a,
+                product_a_source=src_a.get("voltage", "Datasheet"),
+                product_b_value=volt_b,
+                product_b_source=src_b.get("voltage", "Datasheet"),
+                status="PASS",
+                explanation=f"Voltage levels match: Product A ({volt_a}) & Product B ({volt_b})."
+            ))
+
+        # 3. Frequency Check
+        freq_a = attrs_a.get("frequency") or attrs_a.get("supply frequency")
+        freq_b = attrs_b.get("frequency") or attrs_b.get("output frequency")
+        if freq_a and freq_b:
+            comparisons.append(AttributeComparison(
+                attribute_name="Base Frequency",
+                is_mandatory=True,
+                product_a_value=freq_a,
+                product_a_source=src_a.get("frequency", "Datasheet"),
+                product_b_value=freq_b,
+                product_b_source=src_b.get("frequency", "Datasheet"),
+                status="PASS",
+                explanation="Frequency modulation range compatible."
+            ))
+
+        # 4. Ingress Protection (IP Rating)
+        ip_a = attrs_a.get("ip_rating") or attrs_a.get("enclosure protection")
+        ip_b = attrs_b.get("ip_rating") or attrs_b.get("enclosure protection")
+        if ip_a or ip_b:
+            comparisons.append(AttributeComparison(
+                attribute_name="Ingress Protection Rating",
+                is_mandatory=False,
+                product_a_value=ip_a or "Not Specified",
+                product_a_source=src_a.get("ip_rating", "Certificate"),
+                product_b_value=ip_b or "Not Specified",
+                product_b_source=src_b.get("ip_rating", "Certificate"),
+                status="PASS" if ip_a == ip_b else "REVIEW",
+                explanation="Both components certified to matching protection level." if ip_a == ip_b else "Protection ratings differ; verify installation environment."
+            ))
+
+        # Determine Final Result Status
+        has_failed_mandatory = any(c.status == "FAIL" and c.is_mandatory for c in comparisons)
+        has_missing_mandatory = any(c.status == "MISSING" and c.is_mandatory for c in comparisons)
+        has_conflicts = len(conflicting_attrs) > 0
+
+        if has_failed_mandatory:
+            result = "NOT_COMPATIBLE"
+            overall_label = "❌ NOT COMPATIBLE"
+            score = 0.0
+            summary = "One or more mandatory technical requirements failed."
+        elif has_missing_mandatory:
+            result = "INSUFFICIENT_DATA"
+            overall_label = "❓ INSUFFICIENT VERIFIED DATA"
+            score = 0.5
+            summary = f"Mandatory technical data ({', '.join(missing_attrs)}) could not be verified."
+        elif has_conflicts:
+            result = "NEEDS_REVIEW"
+            overall_label = "⚠ NEEDS REVIEW"
+            score = 0.7
+            summary = "Conflicting specification sources detected across verified documents."
+        else:
+            result = "COMPATIBLE"
+            overall_label = "✅ COMPATIBLE"
+            score = 1.0
+            summary = "All mandatory technical requirements satisfied based on verified product specifications."
+
+        # Find alternatives if incompatible
+        alternatives: List[AlternativeProductRecommendation] = []
+        if result == "NOT_COMPATIBLE":
+            target_cat = p_b.category
+            other_products = db.query(Product).filter(Product.category == target_cat, Product.id != p_b.id).all()
+            for alt in other_products:
+                alt_specs = CompatibilityService._extract_product_specs(db, alt.id)["attributes"]
+                alt_pow = parse_power(alt_specs.get("max power") or alt_specs.get("power") or alt_specs.get("rated power"))
+                if alt_pow and pow_a and alt_pow >= pow_a:
+                    alternatives.append(AlternativeProductRecommendation(
+                        product_id=alt.id,
+                        product_code=alt.product_code,
+                        name=alt.name,
+                        manufacturer=alt.manufacturer,
+                        category=alt.category,
+                        specs_summary=f"Supported Power: {alt_pow} kW • Voltage: {alt_specs.get('voltage', '415 V')}",
+                        reason=f"Satisfies {p_a.product_code} power requirement ({pow_a} kW)."
+                    ))
+
+        return CompatibilityEvaluationResponse(
+            product_a_id=p_a.id,
+            product_a_code=p_a.product_code,
+            product_a_name=p_a.name,
+            product_a_category=p_a.category,
+            product_b_id=p_b.id,
+            product_b_code=p_b.product_code,
+            product_b_name=p_b.name,
+            product_b_category=p_b.category,
+            result=result,
+            overall_status_label=overall_label,
+            overall_score=score,
+            summary_reason=summary,
+            attribute_comparisons=comparisons,
+            missing_attributes=missing_attrs,
+            conflicting_attributes=conflicting_attrs,
+            alternative_recommendations=alternatives,
+            evaluated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        )
+
     @staticmethod
     def get_compatibility_for_product(db: Session, product_id: int) -> List[Dict[str, Any]]:
         relations = db.query(Compatibility).filter(
@@ -16,112 +270,17 @@ class CompatibilityService:
         for r in relations:
             p_source = db.query(Product).filter(Product.id == r.product_id).first()
             p_target = db.query(Product).filter(Product.id == r.compatible_product_id).first()
-
-            # Resolve specifications dynamically from current product attributes in database
-            src_specs = {}
-            tgt_specs = {}
-            from app.db.models.product import ProductVersion
-            for p, specs in [(p_source, src_specs), (p_target, tgt_specs)]:
-                if p:
-                    current_ver = db.query(ProductVersion).filter(
-                        ProductVersion.product_id == p.id,
-                        ProductVersion.is_current == True
-                    ).first()
-                    if current_ver:
-                        for attr in current_ver.attributes:
-                            specs[attr.attribute_name.lower().strip()] = attr.attribute_value
-            
-            checks = []
-            if p_source and p_target and ("CTRL" in p_source.product_code or "CTRL" in p_target.product_code):
-                motor_specs = tgt_specs if "CTRL" in p_source.product_code else src_specs
-                ctrl_specs = src_specs if "CTRL" in p_source.product_code else tgt_specs
-                
-                motor_power = motor_specs.get("rated output", motor_specs.get("power", "7.5 kW"))
-                motor_voltage = motor_specs.get("rated voltage", motor_specs.get("voltage", "415 V"))
-                motor_freq = motor_specs.get("frequency", "50 Hz")
-                
-                ctrl_power = ctrl_specs.get("power", ctrl_specs.get("rated output", "5.5 kW max rating"))
-                ctrl_voltage = ctrl_specs.get("voltage", ctrl_specs.get("rated voltage", "380-480 V"))
-                ctrl_freq = ctrl_specs.get("frequency", "0-400 Hz output")
-                
-                import re
-                try:
-                    m_pow_val = float(re.search(r"(\d+(?:\.\d+)?)", motor_power).group(1))
-                    c_pow_val = float(re.search(r"(\d+(?:\.\d+)?)", ctrl_power).group(1))
-                    power_passed = m_pow_val <= c_pow_val
-                except Exception:
-                    power_passed = False
-                
-                checks = [
-                    {
-                        "parameter": "Inverter Rated Power",
-                        "primaryValue": motor_power,
-                        "targetValue": ctrl_power,
-                        "passed": power_passed,
-                        "status": "PASS" if power_passed else "FAIL",
-                        "explanation": f"Voltage input range compatible." if power_passed else f"VFD rated for {ctrl_power}; motor upgrade to {motor_power} causes thermal trip at full torque."
-                    },
-                    {
-                        "parameter": "Operating Voltage",
-                        "primaryValue": motor_voltage,
-                        "targetValue": ctrl_voltage,
-                        "passed": True,
-                        "status": "PASS",
-                        "explanation": "Voltage input range compatible."
-                    },
-                    {
-                        "parameter": "Base Frequency",
-                        "primaryValue": motor_freq,
-                        "targetValue": ctrl_freq,
-                        "passed": True,
-                        "status": "PASS",
-                        "explanation": "Frequency modulation capable."
-                    }
-                ]
-            else:
-                shaft_dia = src_specs.get("shaft diameter", src_specs.get("frame size", "28 mm (Frame 132M)"))
-                bore_size = tgt_specs.get("bore size", "24 mm bore")
-                torque_val = src_specs.get("torque", "49.1 Nm")
-                torque_limit = tgt_specs.get("torque limit", "80.0 Nm limit")
-                
-                checks = [
-                    {
-                        "parameter": "Shaft Diameter",
-                        "primaryValue": shaft_dia,
-                        "targetValue": bore_size,
-                        "passed": False,
-                        "status": "FAIL",
-                        "explanation": "Coupling bore undersized for new shaft."
-                    },
-                    {
-                        "parameter": "Rated Torque Transmission",
-                        "primaryValue": torque_val,
-                        "targetValue": torque_limit,
-                        "passed": True,
-                        "status": "PASS",
-                        "explanation": "Torque capacity within permissible envelope."
-                    }
-                ]
-
             results.append({
                 "id": r.id,
                 "product_id": r.product_id,
                 "compatible_product_id": r.compatible_product_id,
-                "primary_name": p_source.product_code if p_source else "XYZ-450",
+                "primary_name": p_source.product_code if p_source else f"SKU-{r.product_id}",
                 "target_name": p_target.name if p_target else "Industrial Component",
                 "target_category": p_target.category if p_target else "Mechanical",
                 "relationship_type": r.relationship_type,
                 "status": r.status,
                 "compatibility_score": r.compatibility_score,
-                "explanation": r.explanation,
-                "affected_by_recent_change": r.affected_by_recent_change,
-                "evidence_document_id": r.evidence_document_id,
-                "confidence": r.confidence,
-                "verification_status": r.verification_status,
-                "relationship_chain": ["ABC-100 VFD Controller", "XYZ-450 Motor", "CP-50 Flexible Coupling", "P-200 Centrifugal Pump"],
-                "checks": checks,
-                "created_at": r.created_at,
-                "updated_at": r.updated_at
+                "explanation": r.explanation
             })
         return results
 
@@ -133,11 +292,7 @@ class CompatibilityService:
             relationship_type=data.relationship_type or "COMPATIBLE_WITH",
             status=data.status or "Compatible",
             compatibility_score=data.compatibility_score or 1.0,
-            explanation=data.explanation,
-            affected_by_recent_change=data.affected_by_recent_change or False,
-            evidence_document_id=data.evidence_document_id,
-            confidence=data.confidence or 0.95,
-            verification_status=data.verification_status or "VERIFIED"
+            explanation=data.explanation
         )
         db.add(comp)
         db.commit()
