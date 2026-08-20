@@ -24,9 +24,9 @@ import Link from 'next/link';
 export default function CompatibilityPage() {
   const { compatibilityChecks, activeProduct } = useApp();
 
-  const [selectedPairId, setSelectedPairId] = useState<string>(compatibilityChecks[0].id);
+  const [selectedPairId, setSelectedPairId] = useState<string>(compatibilityChecks[0]?.id || '1');
 
-  const activeCheck = compatibilityChecks.find(c => c.id === selectedPairId) || compatibilityChecks[0];
+  const activeCheck = compatibilityChecks.find(c => c.id === selectedPairId) || compatibilityChecks[0] || null;
 
   return (
     <div className="space-y-6">

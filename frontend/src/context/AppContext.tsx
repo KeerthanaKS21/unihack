@@ -110,8 +110,8 @@ export interface IngestionStepState {
 interface AppContextType {
   // Products
   products: Product[];
-  activeProduct: Product;
-  setActiveProduct: (product: Product) => void;
+  activeProduct: Product | null;
+  setActiveProduct: (product: Product | null) => void;
   updateProduct: (updated: Product) => void;
 
   // Documents & Ingestion
@@ -157,7 +157,7 @@ interface AppContextType {
 
   // Quotes
   quotations: Quotation[];
-  activeQuote: Quotation;
+  activeQuote: Quotation | null;
   generateQuoteFromPrompt: (prompt: string) => Promise<Quotation>;
   modifyQuoteValidation: (quoteId: string, quantity: number, leadDays: number) => Promise<{ success: boolean; message: string; quote: Quotation }>;
   approveQuote: (quoteId: string) => void;
@@ -187,28 +187,27 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // State
   const [products, setProducts] = useState<Product[]>(mockProducts);
-  const [activeProduct, setActiveProduct] = useState<Product>(mockProducts[0]);
-  const [documents, setDocuments] = useState<IngestedDocument[]>(mockDocuments);
+  const [activeProduct, setActiveProduct] = useState<Product | null>(mockProducts[0] || null);
+  const [documents, setDocuments] = useState<IngestedDocument[]>([]);
   const [ingestionState, setIngestionState] = useState<IngestionStepState | null>(null);
 
-  const [productChanges, setProductChanges] = useState<ProductChange[]>(mockProductChanges);
-  const [changeImpacts, setChangeImpacts] = useState<ChangeImpact[]>(initialChangeImpacts);
+  const [productChanges, setProductChanges] = useState<ProductChange[]>([]);
+  const [changeImpacts, setChangeImpacts] = useState<ChangeImpact[]>([]);
   const [syncStatus, setSyncStatus] = useState<'pending_impact_review' | 'ready_for_approval' | 'synchronized'>('pending_impact_review');
   const [ecommerceStatus, setEcommerceStatus] = useState<'ready_to_publish' | 'published' | 'syncing'>('ready_to_publish');
   const [ecommerceLastSyncTime, setEcommerceLastSyncTime] = useState<string | null>(null);
 
   const [catalogHealth, setCatalogHealth] = useState<CatalogHealthSummary>(initialCatalogHealth);
-  const [catalogIssues, setCatalogIssues] = useState<CatalogIssue[]>(initialCatalogIssues);
-  const [complianceRecords, setComplianceRecords] = useState<ComplianceRecord[]>(initialComplianceRecords);
+  const [catalogIssues, setCatalogIssues] = useState<CatalogIssue[]>([]);
+  const [complianceRecords, setComplianceRecords] = useState<ComplianceRecord[]>([]);
   const [compatibilityChecks, setCompatibilityChecks] = useState<TechnicalCompatibilityCheck[]>(mockCompatibilityChecks);
-  const [supplierOffers, setSupplierOffers] = useState<SupplierOffer[]>(mockSupplierOffers);
-  const [quotations, setQuotations] = useState<Quotation[]>(initialQuotations);
-  const [activeQuote, setActiveQuote] = useState<Quotation>(initialQuotations[0]);
+  const [supplierOffers, setSupplierOffers] = useState<SupplierOffer[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
+  const [activeQuote, setActiveQuote] = useState<Quotation | null>(null);
 
-  const [salesMessages, setSalesMessages] = useState<AIMessage[]>(initialSalesChatMessages);
-  const [askCatalogMessages, setAskCatalogMessages] = useState<AIMessage[]>(initialAskCatalogMessages);
+  const [salesMessages, setSalesMessages] = useState<AIMessage[]>([]);
+  const [askCatalogMessages, setAskCatalogMessages] = useState<AIMessage[]>([]);
 
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [viewingDocument, setViewingDocument] = useState<IngestedDocument | null>(null);
@@ -249,10 +248,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         // Load dynamic products from DB
         const productsRes = await api.getProducts({ limit: 100 }).catch(() => null);
-        if (productsRes && Array.isArray(productsRes.items) && productsRes.items.length > 0) {
+        if (productsRes && Array.isArray(productsRes.items)) {
           const adaptedProducts = productsRes.items.map(adaptProduct);
           setProducts(adaptedProducts);
-          setActiveProduct(adaptedProducts[0]);
+          setActiveProduct(adaptedProducts.length > 0 ? adaptedProducts[0] : null);
+        } else {
+          setProducts([]);
+          setActiveProduct(null);
         }
 
         // 1. Catalog Health
@@ -335,12 +337,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (quotes && Array.isArray(quotes) && quotes.length > 0) {
           const firstDbQuote = quotes[0];
           if (firstDbQuote) {
-            setActiveQuote(prev => ({
+            setActiveQuote(prev => (prev ? {
               ...prev,
               quoteNumber: firstDbQuote.quote_number || prev.quoteNumber,
               version: firstDbQuote.version || prev.version,
               status: firstDbQuote.status || prev.status,
-            }));
+            } : null));
           }
         }
       } catch (err) {
@@ -482,7 +484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Product Updates
   const updateProduct = (updated: Product) => {
     setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
-    if (activeProduct.id === updated.id) {
+    if (activeProduct && activeProduct.id === updated.id) {
       setActiveProduct(updated);
     }
   };
@@ -627,6 +629,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Synchronization Approval
   const approveSynchronization = async (notes?: string) => {
     try {
+      if (!activeProduct || !activeProduct.id) return;
       const numMatch = activeProduct.id.match(/\d+/);
       const numId = numMatch ? parseInt(numMatch[0], 10) : null;
       if (!numId) return;
@@ -663,6 +666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // E-commerce Website Update Approval
   const approveEcommerceUpdate = async () => {
+    if (!activeProduct) return;
     // Look up unreviewed e-commerce impacts for the active product
     const unreviewedEcomImpacts = changeImpacts.filter(
       i => !i.reviewed && (i.productId === activeProduct.id || i.productId === `prod-${activeProduct.model.toLowerCase()}`) && (i.domain === 'E-commerce' || (i as any).impactType === 'E-commerce')
@@ -844,6 +848,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Modify Quote with Validation
   const modifyQuoteValidation = async (quoteId: string, quantity: number, leadDays: number) => {
+    if (!activeQuote) {
+      return { success: false, message: 'No active quote available.', quote: null as any };
+    }
     // Simulate checking business data
     const unitPrice = 39500;
     const subtotal = quantity * unitPrice;
@@ -904,7 +911,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     api.approveQuote(numId, 'Sales Operations').catch(() => {});
 
     setQuotations(prev => prev.map(q => q.id === quoteId ? { ...q, status: 'Approved' } : q));
-    setActiveQuote(prev => ({ ...prev, status: 'Approved' }));
+    setActiveQuote(prev => (prev ? { ...prev, status: 'Approved' } : null));
     showToast({
       type: 'success',
       title: 'Quotation Approved',
