@@ -72,14 +72,14 @@ class DashboardService:
 
         return {
             "total_products": health["total_products"],
-            "total_suppliers": total_suppliers or 8,
+            "total_suppliers": total_suppliers,
             "pending_approvals": pending_approvals,
             "catalog_health": health,
-            "unresolved_issues": unresolved_issues or 6,
+            "unresolved_issues": unresolved_issues,
             "pending_change_impacts": pending_impacts,
             "recent_documents": doc_list,
             "recent_changes": changes_list,
-            "compliance_issues": compliance_issues or 3,
+            "compliance_issues": compliance_issues,
             "categories_breakdown": categories_breakdown,
             "trend_history": trend_history
         }

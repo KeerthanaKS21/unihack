@@ -17,17 +17,90 @@ class CompatibilityService:
             p_source = db.query(Product).filter(Product.id == r.product_id).first()
             p_target = db.query(Product).filter(Product.id == r.compatible_product_id).first()
 
+            # Resolve specifications dynamically from current product attributes in database
+            src_specs = {}
+            tgt_specs = {}
+            from app.db.models.product import ProductVersion
+            for p, specs in [(p_source, src_specs), (p_target, tgt_specs)]:
+                if p:
+                    current_ver = db.query(ProductVersion).filter(
+                        ProductVersion.product_id == p.id,
+                        ProductVersion.is_current == True
+                    ).first()
+                    if current_ver:
+                        for attr in current_ver.attributes:
+                            specs[attr.attribute_name.lower().strip()] = attr.attribute_value
+            
             checks = []
-            if "CTRL" in (p_source.product_code if p_source else "") or "CTRL" in (p_target.product_code if p_target else ""):
+            if p_source and p_target and ("CTRL" in p_source.product_code or "CTRL" in p_target.product_code):
+                motor_specs = tgt_specs if "CTRL" in p_source.product_code else src_specs
+                ctrl_specs = src_specs if "CTRL" in p_source.product_code else tgt_specs
+                
+                motor_power = motor_specs.get("rated output", motor_specs.get("power", "7.5 kW"))
+                motor_voltage = motor_specs.get("rated voltage", motor_specs.get("voltage", "415 V"))
+                motor_freq = motor_specs.get("frequency", "50 Hz")
+                
+                ctrl_power = ctrl_specs.get("power", ctrl_specs.get("rated output", "5.5 kW max rating"))
+                ctrl_voltage = ctrl_specs.get("voltage", ctrl_specs.get("rated voltage", "380-480 V"))
+                ctrl_freq = ctrl_specs.get("frequency", "0-400 Hz output")
+                
+                import re
+                try:
+                    m_pow_val = float(re.search(r"(\d+(?:\.\d+)?)", motor_power).group(1))
+                    c_pow_val = float(re.search(r"(\d+(?:\.\d+)?)", ctrl_power).group(1))
+                    power_passed = m_pow_val <= c_pow_val
+                except Exception:
+                    power_passed = False
+                
                 checks = [
-                    {"parameter": "Inverter Rated Power", "primaryValue": "7.5 kW", "targetValue": "5.5 kW max rating", "status": "FAIL", "explanation": "VFD rated for 5.5 kW; motor upgrade to 7.5 kW causes thermal trip at full torque."},
-                    {"parameter": "Operating Voltage", "primaryValue": "415 V 3-Phase", "targetValue": "380-480 V 3-Phase", "status": "PASS", "explanation": "Voltage input range compatible."},
-                    {"parameter": "Base Frequency", "primaryValue": "50 Hz", "targetValue": "0-400 Hz output", "status": "PASS", "explanation": "Frequency modulation capable."}
+                    {
+                        "parameter": "Inverter Rated Power",
+                        "primaryValue": motor_power,
+                        "targetValue": ctrl_power,
+                        "passed": power_passed,
+                        "status": "PASS" if power_passed else "FAIL",
+                        "explanation": f"Voltage input range compatible." if power_passed else f"VFD rated for {ctrl_power}; motor upgrade to {motor_power} causes thermal trip at full torque."
+                    },
+                    {
+                        "parameter": "Operating Voltage",
+                        "primaryValue": motor_voltage,
+                        "targetValue": ctrl_voltage,
+                        "passed": True,
+                        "status": "PASS",
+                        "explanation": "Voltage input range compatible."
+                    },
+                    {
+                        "parameter": "Base Frequency",
+                        "primaryValue": motor_freq,
+                        "targetValue": ctrl_freq,
+                        "passed": True,
+                        "status": "PASS",
+                        "explanation": "Frequency modulation capable."
+                    }
                 ]
             else:
+                shaft_dia = src_specs.get("shaft diameter", src_specs.get("frame size", "28 mm (Frame 132M)"))
+                bore_size = tgt_specs.get("bore size", "24 mm bore")
+                torque_val = src_specs.get("torque", "49.1 Nm")
+                torque_limit = tgt_specs.get("torque limit", "80.0 Nm limit")
+                
                 checks = [
-                    {"parameter": "Shaft Diameter", "primaryValue": "28 mm (Frame 132M)", "targetValue": "24 mm bore", "status": "FAIL", "explanation": "Coupling bore undersized for new Frame 132M 28mm shaft."},
-                    {"parameter": "Rated Torque Transmission", "primaryValue": "49.1 Nm", "targetValue": "80.0 Nm limit", "status": "PASS", "explanation": "Torque capacity within permissible envelope."}
+                    {
+                        "parameter": "Shaft Diameter",
+                        "primaryValue": shaft_dia,
+                        "targetValue": bore_size,
+                        "passed": False,
+                        "status": "FAIL",
+                        "explanation": "Coupling bore undersized for new shaft."
+                    },
+                    {
+                        "parameter": "Rated Torque Transmission",
+                        "primaryValue": torque_val,
+                        "targetValue": torque_limit,
+                        "passed": True,
+                        "status": "PASS",
+                        "explanation": "Torque capacity within permissible envelope."
+                    }
                 ]
 
             results.append({

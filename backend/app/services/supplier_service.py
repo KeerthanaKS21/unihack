@@ -109,12 +109,36 @@ class SupplierService:
             sup = db.query(Supplier).filter(Supplier.id == sp.supplier_id).first()
             prod = db.query(Product).filter(Product.id == sp.product_id).first()
 
+            # Resolve specifications dynamically from current product attributes in database
+            power = "N/A"
+            voltage = "N/A"
+            ip_rating = "N/A"
+            speed = "N/A"
+            
+            if prod:
+                from app.db.models.product import ProductVersion
+                current_ver = db.query(ProductVersion).filter(
+                    ProductVersion.product_id == prod.id,
+                    ProductVersion.is_current == True
+                ).first()
+                if current_ver:
+                    for attr in current_ver.attributes:
+                        name_lower = attr.attribute_name.lower().strip()
+                        if name_lower in ["rated output", "power"]:
+                            power = attr.attribute_value
+                        elif name_lower in ["rated voltage", "voltage"]:
+                            voltage = attr.attribute_value
+                        elif name_lower in ["protection degree", "ip rating", "iprating", "ip_rating"]:
+                            ip_rating = attr.attribute_value
+                        elif name_lower in ["synchronous speed", "speed"]:
+                            speed = attr.attribute_value
+
             violations = []
             if sp.is_exact_match != "Exact Match":
-                if "WEG" in (prod.name if prod else ""):
-                    violations.append("Enclosure IP54 (Required: IP55)")
-                elif "ABB" in (prod.name if prod else ""):
-                    violations.append("Lead time 14 days (Required: <10 days)")
+                if ip_rating != "N/A" and "IP54" in ip_rating:
+                    violations.append(f"Enclosure {ip_rating} (Required: IP55)")
+                if sp.delivery_days > 10:
+                    violations.append(f"Lead time {sp.delivery_days} days (Required: <10 days)")
 
             results.append({
                 "id": sp.id,
@@ -136,10 +160,10 @@ class SupplierService:
                 "tier": sup.tier if sup else "Authorized Partner",
                 "rating": sup.rating if sup else 4.5,
                 "violations": violations,
-                "power": "7.5 kW" if "450" in (prod.product_code if prod else "") else "5.5 kW",
-                "voltage": "415 V",
-                "ip_rating": "IP54" if "WEG" in (prod.name if prod else "") else "IP55",
-                "speed": "1460 RPM",
+                "power": power,
+                "voltage": voltage,
+                "ip_rating": ip_rating,
+                "speed": speed,
                 "created_at": sp.created_at,
                 "updated_at": sp.updated_at
             })

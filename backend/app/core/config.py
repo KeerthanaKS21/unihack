@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from typing import List, Optional
 
 # Base directory for backend
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -18,10 +18,21 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(BASE_DIR / "uploads")
     MAX_FILE_SIZE_MB: int = 50
     ALLOWED_EXTENSIONS: List[str] = ["pdf", "png", "jpg", "jpeg", "xlsx", "xls", "csv", "docx"]
+
+    # OpenAI / LLM Configuration
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
     
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
     
+    # LLM Settings (Optional API integration)
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    LLM_PROVIDER: str = "auto"
+    LLM_MODEL: str = "gpt-4o-mini"
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

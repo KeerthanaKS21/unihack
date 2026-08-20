@@ -278,7 +278,7 @@ export default function UploadIngestPage() {
   };
 
   const totalPages = Math.ceil(totalDocsCount / pageSize) || 1;
-  const displayDocs = dbDocuments.length > 0 ? dbDocuments : fallbackDocs;
+  const displayDocs = dbDocuments;
 
   return (
     <div className="space-y-6">
@@ -627,7 +627,8 @@ export default function UploadIngestPage() {
                       ? doc.source_citations
                       : [
                           { page: 1, snippet: `Authoritative ${docType} document retained for traceability.` }
-                        ]
+                        ],
+                    extractedText: doc.extracted_text
                   });
 
                   return (

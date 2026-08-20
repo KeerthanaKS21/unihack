@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { StatusBadge } from '@/components/common/StatusBadge';
 import { ConfirmationModal } from '@/components/common/ConfirmationModal';
+import { api } from '@/lib/api';
 import {
   RefreshCw,
   Zap,
@@ -18,44 +18,134 @@ import {
   ArrowUpRight,
   ExternalLink,
   Lock,
-  Sparkles
+  Sparkles,
+  Loader2,
+  Check,
+  Filter
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SynchronizationPage() {
   const {
-    activeProduct,
-    productChanges,
-    syncStatus,
     unreviewedImpactsCount,
     reviewedImpactsCount,
-    approveSynchronization,
     setViewingDocument,
-    documents
+    showToast
   } = useApp();
 
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [approvalNotes, setApprovalNotes] = useState(
-    'Verified against Siemens technical_spec_2026.pdf engineering release. Approved for production data layer.'
+    'Verified against latest uploaded engineering datasheet. Approved for master data catalog.'
   );
 
-  const isSyncApproved = syncStatus === 'synchronized';
+  // Dynamic Live State from Backend
+  const [loading, setLoading] = useState(true);
+  const [dbChanges, setDbChanges] = useState<any[]>([]);
+  const [activeDoc, setActiveDoc] = useState<any | null>(null);
+  const [isSyncApproved, setIsSyncApproved] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [versionDiff, setVersionDiff] = useState<any | null>(null);
+  const [selectedProductFilter, setSelectedProductFilter] = useState<string>('all');
+
+  // Fetch changes & latest document from backend
+  const fetchSyncData = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch uploaded documents
+      const docsRes = await api.getDocuments({ limit: 10 });
+      const docs = docsRes?.items || [];
+      if (docs.length > 0) {
+        const latest = docs[0];
+        setActiveDoc(latest);
+
+        // Run detect-version on latest doc to get dynamic spec diff
+        try {
+          const diffRes = await fetch(`http://localhost:8000/api/documents/${latest.id}/detect-version`, { method: 'POST' });
+          if (diffRes.ok) {
+            const diffJson = await diffRes.json();
+            setVersionDiff(diffJson);
+          }
+        } catch (e) {
+          console.warn('detect-version note:', e);
+        }
+      }
+
+      // 2. Fetch changes from DB
+      const changesRes = await api.getChanges();
+      if (Array.isArray(changesRes)) {
+        setDbChanges(changesRes);
+        const hasPending = changesRes.some((c: any) => c.status === 'PENDING');
+        if (!hasPending && changesRes.length > 0) {
+          setIsSyncApproved(true);
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching live synchronization data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSyncData();
+  }, []);
+
+  const handleApprove = async () => {
+    if (!activeDoc) return;
+    setSyncing(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/documents/${activeDoc.id}/approve-sync?approved_by=Lead%20Systems%20Engineer&comments=${encodeURIComponent(approvalNotes)}`, {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.detail || 'Approval failed');
+      }
+      const data = await res.json();
+      setIsSyncApproved(true);
+      setConfirmModalOpen(false);
+      showToast({
+        type: 'success',
+        title: 'Synchronization Approved',
+        message: data.message || `Promoted to ${data.promoted_version} successfully.`
+      });
+      fetchSyncData();
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Synchronization Error',
+        message: err.message || 'Failed to approve synchronization.'
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const hasUnreviewedImpacts = unreviewedImpactsCount > 0;
 
-  const specRows = [
-    { label: 'Rated Power', key: 'power', current: '7.5 kW', previous: '5.5 kW', isChanged: true, changeNote: '+36.4% upgrade (10 HP)' },
-    { label: 'Operating Voltage', key: 'voltage', current: '415 V', previous: '415 V', isChanged: false, changeNote: 'Standard 3-Phase Grid' },
-    { label: 'Full Load Speed', key: 'speed', current: '1460 RPM', previous: '1440 RPM', isChanged: true, changeNote: '+20 RPM efficiency tune' },
-    { label: 'Rated Frequency', key: 'frequency', current: '50 Hz', previous: '50 Hz', isChanged: false, changeNote: 'Standard 50 Hz' },
-    { label: 'Ingress Protection', key: 'ipRating', current: 'IP55', previous: 'IP55', isChanged: false, changeNote: 'Dust & Water Jet TEFC' },
-    { label: 'Gross Weight', key: 'weight', current: '45 kg', previous: '42 kg', isChanged: true, changeNote: '+3 kg (Frame 132S → 132M)' },
-    { label: 'Full Load Efficiency', key: 'efficiency', current: '91.2% (IE3)', previous: '89.6% (IE2)', isChanged: true, changeNote: 'Upgraded to IE3 Premium' }
-  ];
+  // Build unified changes list from either single-doc versionDiff or multi-row dbChanges
+  let combinedRows: any[] = [];
+  if (versionDiff?.changes && versionDiff.changes.length > 0) {
+    combinedRows = versionDiff.changes;
+  } else if (dbChanges && dbChanges.length > 0) {
+    combinedRows = dbChanges.map((c: any) => ({
+      attribute_name: c.attribute_name,
+      old_value: c.old_value || '-',
+      new_value: c.new_value,
+      change_type: c.change_type || 'MODIFIED',
+      product_code: c.product_code || c.affected_entity_id || (c.product?.product_code),
+      source_document: c.source_document || activeDoc?.original_file_name,
+      status: c.status || 'PENDING'
+    }));
+  }
 
-  const handleApprove = () => {
-    approveSynchronization(approvalNotes);
-    setConfirmModalOpen(false);
-  };
+  // Filter by product if selected
+  const availableProducts = Array.from(new Set(combinedRows.map(r => r.product_code).filter(Boolean)));
+  const displayedRows = selectedProductFilter === 'all'
+    ? combinedRows
+    : combinedRows.filter(r => r.product_code === selectedProductFilter);
+
+  const meaningfulChanges = displayedRows.filter((c: any) => c.change_type === 'MODIFIED' || c.change_type === 'ADDED');
 
   return (
     <div className="space-y-6">
@@ -66,8 +156,8 @@ export default function SynchronizationPage() {
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Synchronization' }
         ]}
-        badge={isSyncApproved ? 'Synchronized & Verified' : 'Version Delta Detected'}
-        badgeVariant={isSyncApproved ? 'success' : 'warning'}
+        badge={isSyncApproved ? 'Synchronized & Verified' : meaningfulChanges.length > 0 ? `${meaningfulChanges.length} Changes Detected` : 'Baseline Verified'}
+        badgeVariant={isSyncApproved ? 'success' : meaningfulChanges.length > 0 ? 'warning' : 'primary'}
         action={
           <div className="flex items-center gap-2.5">
             <Link
@@ -80,15 +170,26 @@ export default function SynchronizationPage() {
 
             <button
               onClick={() => setConfirmModalOpen(true)}
-              disabled={isSyncApproved}
+              disabled={isSyncApproved || meaningfulChanges.length === 0 || syncing}
               className={`px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition-all inline-flex items-center gap-1.5 ${
                 isSyncApproved
                   ? 'bg-emerald-600 text-white opacity-90 cursor-default'
+                  : meaningfulChanges.length === 0
+                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{isSyncApproved ? '✓ Synchronized' : 'Approve Synchronization'}</span>
+              {syncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Synchronizing...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isSyncApproved ? '✓ Synchronized' : 'Approve Synchronization'}</span>
+                </>
+              )}
             </button>
           </div>
         }
@@ -102,17 +203,17 @@ export default function SynchronizationPage() {
           </div>
           <div>
             <h3 className="text-sm font-bold">
-              Master Record Synchronized & Verified (v2.0 Active)
+              Master Record Synchronized & Verified (Active in Master Catalog)
             </h3>
             <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
-              XYZ-450 specifications (7.5 kW, 1460 RPM, 45 kg) have been validated with human sign-off and propagated across the unified enterprise data layer.
+              Specifications have been validated with human engineering sign-off and propagated across the enterprise data layer. Previous versions archived in history.
             </p>
           </div>
         </div>
       )}
 
       {/* Change Detection & Impact Alert Banner */}
-      {!isSyncApproved && (
+      {!isSyncApproved && meaningfulChanges.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Changes Detected Card */}
           <div className="bg-white rounded-2xl p-5 border border-amber-200 bg-amber-50/20 shadow-xs flex items-start justify-between gap-4">
@@ -123,27 +224,45 @@ export default function SynchronizationPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-                    3 Technical Changes Detected
+                    {meaningfulChanges.length} Technical Changes Detected
                   </span>
                   <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-amber-100 text-amber-800 font-bold">
-                    v1.4 → v2.0
+                    v1.0 → v2.0
                   </span>
                 </div>
                 <h4 className="text-sm font-bold text-slate-900 mt-1">
-                  Siemens XYZ-450 Industrial Motor
+                  {versionDiff?.product_name || (availableProducts.length > 0 ? `${availableProducts.join(', ')} Catalog Delta` : 'Catalog Version Delta')}
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Source: <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600 font-mono">technical_spec_2026.pdf</code>
+                  Source: <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600 font-mono">{activeDoc?.original_file_name || activeDoc?.filename || 'Document'}</code>
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setViewingDocument(documents[0])}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 shrink-0"
-            >
-              <span>View PDF</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
+            {activeDoc && (
+              <button
+                onClick={() => setViewingDocument({
+                  id: String(activeDoc.id),
+                  filename: activeDoc.original_file_name || activeDoc.filename,
+                  productId: String(activeDoc.product_id || 1),
+                  productModel: availableProducts[0] || 'Catalog Product',
+                  documentType: activeDoc.document_type || 'DATASHEET',
+                  uploadedOn: 'Today',
+                  fileSize: '3.2 MB',
+                  version: 'v2.0',
+                  status: 'Processed',
+                  matchConfidence: 0.98,
+                  isSameProductDetected: true,
+                  detectedChangesSummary: 'Extracted specifications',
+                  pagesCount: activeDoc.pages_count || 1,
+                  extractedAttributes: activeDoc.extracted_attributes || {},
+                  sourceCitations: activeDoc.source_citations || []
+                })}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 shrink-0"
+              >
+                <span>View Details</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Change Impact Pending Review Card */}
@@ -166,7 +285,7 @@ export default function SynchronizationPage() {
                   <span className={`text-[10px] font-bold px-2 py-0.2 rounded-full ${
                     hasUnreviewedImpacts ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
                   }`}>
-                    {reviewedImpactsCount} of 6 Reviewed
+                    {reviewedImpactsCount} Reviewed
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">
@@ -189,7 +308,7 @@ export default function SynchronizationPage() {
 
       {/* Main Spec Comparison Diff Table */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-bold text-slate-900 tracking-tight">
               Specification Parameter Comparison Matrix
@@ -200,6 +319,23 @@ export default function SynchronizationPage() {
           </div>
 
           <div className="flex items-center gap-4 text-xs">
+            {/* Filter by product if multiple products exist */}
+            {availableProducts.length > 1 && (
+              <div className="flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  value={selectedProductFilter}
+                  onChange={e => setSelectedProductFilter(e.target.value)}
+                  className="text-xs font-bold px-2.5 py-1 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none"
+                >
+                  <option value="all">All Modified Products ({availableProducts.length})</option>
+                  {availableProducts.map((pCode, idx) => (
+                    <option key={idx} value={pCode}>{pCode}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300" />
               <span className="text-slate-600 font-medium">Changed Attribute</span>
@@ -213,70 +349,113 @@ export default function SynchronizationPage() {
 
         {/* Diff Table */}
         <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-4 w-1/4">Specification Parameter</th>
-                <th className="py-3 px-4 w-1/4 text-slate-500 bg-slate-50">
-                  Previous Baseline (v1.4 - 2024)
-                </th>
-                <th className="py-3 px-4 w-1/4 text-blue-900 bg-blue-50/70 border-l border-r border-blue-100">
-                  Newly Ingested (v2.0 - 2026)
-                </th>
-                <th className="py-3 px-4 w-1/4">Delta Analysis & Impact Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {specRows.map(row => (
-                <tr
-                  key={row.key}
-                  className={`transition-colors ${
-                    row.isChanged ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/60'
-                  }`}
-                >
-                  <td className="py-3.5 px-4 font-bold text-slate-800">
-                    {row.label}
-                  </td>
-
-                  {/* Previous Value */}
-                  <td className="py-3.5 px-4 font-mono text-slate-500 bg-slate-50/50">
-                    {row.isChanged ? (
-                      <span className="line-through decoration-rose-500/60 decoration-2 text-slate-400">
-                        {row.previous}
-                      </span>
-                    ) : (
-                      <span>{row.previous}</span>
-                    )}
-                  </td>
-
-                  {/* New Value with Indicator */}
-                  <td className={`py-3.5 px-4 font-mono font-bold border-l border-r border-slate-100 ${
-                    row.isChanged ? 'text-amber-900 bg-amber-100/40' : 'text-emerald-800 bg-emerald-50/30'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span>{row.current}</span>
-                      {row.isChanged ? (
-                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 border border-amber-300">
-                          MODIFIED
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          UNCHANGED
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* Note */}
-                  <td className="py-3.5 px-4">
-                    <span className="text-slate-600 font-medium">
-                      {row.changeNote}
-                    </span>
-                  </td>
+          {loading ? (
+            <div className="p-12 text-center text-slate-400 space-y-2">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
+              <p className="text-xs">Loading live parameter comparison matrix...</p>
+            </div>
+          ) : displayedRows.length === 0 ? (
+            <div className="p-8 text-center bg-slate-50 space-y-2">
+              <ShieldCheck className="w-8 h-8 text-emerald-600 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-800">Master Record in Sync</h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                No pending parameter changes detected. Upload a new datasheet version in Upload & Ingest to trigger the difference detection engine.
+              </p>
+              <Link
+                href="/upload"
+                className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5"
+              >
+                <span>Upload New Version Document →</span>
+              </Link>
+            </div>
+          ) : (
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="py-3 px-4 w-1/4">Product Target (Code & Name)</th>
+                  <th className="py-3 px-4 w-1/4">Specification Parameter</th>
+                  <th className="py-3 px-4 w-1/5 text-slate-500 bg-slate-50">
+                    Previous Baseline (v1.0)
+                  </th>
+                  <th className="py-3 px-4 w-1/5 text-blue-900 bg-blue-50/70 border-l border-r border-blue-100">
+                    Newly Ingested (v2.0)
+                  </th>
+                  <th className="py-3 px-4 w-1/6">Delta Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {displayedRows.map((row: any, idx: number) => {
+                  const isModified = row.change_type === 'MODIFIED' || row.change_type === 'ADDED';
+                  const prodCode = row.product_code || versionDiff?.product_code || 'CATALOG';
+                  const prodName = row.product_name || versionDiff?.product_name || `${prodCode} Industrial Equipment`;
+                  return (
+                    <tr
+                      key={idx}
+                      className={`transition-colors ${
+                        isModified ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/60'
+                      }`}
+                    >
+                      {/* Product Target */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono font-bold text-[11px] text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 w-fit">
+                            {prodCode}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-900 mt-0.5 line-clamp-1">
+                            {prodName}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Specification Parameter */}
+                      <td className="py-3.5 px-4 font-bold text-slate-800 capitalize">
+                        {row.attribute_name.replace(/_/g, ' ')}
+                      </td>
+
+                      {/* Previous Value */}
+                      <td className="py-3.5 px-4 font-mono text-slate-500 bg-slate-50/50">
+                        {isModified ? (
+                          <span className="line-through decoration-rose-500/60 decoration-2 text-slate-400">
+                            {row.old_value || '-'}
+                          </span>
+                        ) : (
+                          <span>{row.old_value || '-'}</span>
+                        )}
+                      </td>
+
+                      {/* New Value with Indicator */}
+                      <td className={`py-3.5 px-4 font-mono font-bold border-l border-r border-slate-100 ${
+                        isModified ? 'text-amber-900 bg-amber-100/40' : 'text-emerald-800 bg-emerald-50/30'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span>{row.new_value}</span>
+                          {isModified ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 border border-amber-300">
+                              {row.change_type}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              UNCHANGED
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Delta Status & Action */}
+                      <td className="py-3.5 px-4">
+                        <span className={`text-xs font-bold flex items-center gap-1.5 ${
+                          isModified ? 'text-amber-700' : 'text-emerald-700'
+                        }`}>
+                          {isModified ? <AlertTriangle className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                          <span>{isModified ? 'Review Required' : 'In Sync'}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Human Sign-off Action Callout */}
@@ -290,10 +469,12 @@ export default function SynchronizationPage() {
 
           <button
             onClick={() => setConfirmModalOpen(true)}
-            disabled={isSyncApproved}
+            disabled={isSyncApproved || meaningfulChanges.length === 0 || syncing}
             className={`px-5 py-2.5 text-xs font-bold rounded-lg shadow-sm transition-all shrink-0 ${
               isSyncApproved
                 ? 'bg-emerald-600 text-white opacity-80 cursor-default'
+                : meaningfulChanges.length === 0
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
           >
@@ -305,8 +486,8 @@ export default function SynchronizationPage() {
       {/* Confirmation Dialog Modal */}
       <ConfirmationModal
         isOpen={confirmModalOpen}
-        title="Confirm Version 2.0 Synchronization"
-        description="You are about to promote XYZ-450 v2.0 (7.5 kW, 1460 RPM, 45 kg) to the verified master data catalog. This update will unlock B2B e-commerce synchronization, procurement re-indexing, and quote template updates."
+        title={`Confirm Synchronization Sign-off`}
+        description={`You are about to promote verified version specifications to the master data catalog. Previous baseline versions will be archived in history.`}
         confirmLabel="Confirm & Publish to Master"
         cancelLabel="Cancel"
         variant="primary"

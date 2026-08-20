@@ -25,8 +25,34 @@ class Document(Base):
     extracted_summary = Column(Text, nullable=True)
     extracted_attributes = Column(JSON, nullable=True)
     source_citations = Column(JSON, nullable=True)
+    extracted_text = Column(Text, nullable=True)
+    extracted_product_data = Column(JSON, nullable=True)     # Standardized structured product data from LLM
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
     product = relationship("Product", back_populates="documents")
     certificates = relationship("Certificate", back_populates="document")
+
+    @property
+    def is_ambiguous(self) -> bool:
+        import json
+        if self.processing_status == "REVIEW_REQUIRED" and self.extracted_summary:
+            try:
+                data = json.loads(self.extracted_summary)
+                return data.get("status") == "ambiguous"
+            except Exception:
+                return False
+        return False
+
+    @property
+    def possible_matches(self) -> list:
+        import json
+        if self.extracted_summary:
+            try:
+                data = json.loads(self.extracted_summary)
+                if isinstance(data, dict) and data.get("status") == "ambiguous":
+                    return data.get("possible_matches", [])
+            except Exception:
+                return []
+        return []
+
