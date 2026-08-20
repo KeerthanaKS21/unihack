@@ -1,23 +1,26 @@
+import csv
+import io
+import os
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc
-import os
-import re
-import json
-from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any
 from fastapi import UploadFile, HTTPException
-
 from app.db.models.document import Document
-from app.db.models.product import Product, ProductVersion, ProductAttribute
+from app.db.models.product import Product
+from app.db.models.product import ProductAttribute, ProductVersion
 from app.db.models.change import Change, ChangeImpact
 from app.utils.file_storage import save_uploaded_file
-from app.schemas.document import DocumentUploadResponse, DocumentResponse, ProductExtractionResponse
+from app.schemas.document import DocumentUploadResponse, DocumentResponse
 
 from app.services.pdf_processor import PDFProcessor
-from app.services.tabular_processor import TabularProcessor
-from app.services.image_processor import ImageProcessor
-from app.services.docx_processor import DocxProcessor
-from app.services.product_extraction_service import ProductExtractionService
+
+NON_SPEC_FIELDS = {
+    "id", "name", "category", "version", "supplier id", "supplier name",
+    "supplier status", "unit price (inr)", "currency", "stock qty",
+    "delivery days", "moq", "warranty (months)", "quote validity (days)",
+    "payment terms", "incoterms", "offer status", "supplier data source",
+    "commercial data last updated"
+}
 
 class DocumentService:
     @staticmethod
@@ -29,138 +32,89 @@ class DocumentService:
     ) -> DocumentUploadResponse:
         # Save file to uploads directory and get metadata
         file_meta = await save_uploaded_file(file)
-        lower_fname = file_meta["original_file_name"].lower()
+        file_path = file_meta["file_path"]
+        orig_name = file_meta["original_file_name"]
+        orig_lower = orig_name.lower()
 
-        # Read content to identify product from document text/bytes
-        with open(file_meta["file_path"], "rb") as f:
-            content_bytes = f.read()
+        extracted_data: Dict[str, Any] = {
+            "pages_count": 1,
+            "extracted_summary": f"Ingested {orig_name} with verified processing.",
+            "extracted_attributes": {},
+            "source_citations": []
+        }
 
-        # Dynamic Product Identification
-        matched_product = None
-        is_ambiguous = False
-        possible_matches = []
-        confidence = 1.0
+        matched_product: Optional[Product] = None
+        version_detected: Optional[str] = None
 
-        if product_id:
-            matched_product = db.query(Product).filter(Product.id == product_id).first()
-        else:
-            # Run Scoring Entity Resolution Heuristic
-            text_content = content_bytes.decode("utf-8", errors="ignore")
-            products = db.query(Product).all()
-            scores = {}
-            
-            for p in products:
-                score = 0
-                p_code = p.product_code.lower()
-                p_name = p.name.lower()
-                p_man = p.manufacturer.lower()
-                
-                # Check for exact code/model reference in document content
-                code_pattern = rf"\b{re.escape(p_code)}\b"
-                code_pattern_no_dash = rf"\b{re.escape(p_code.replace('-', ''))}\b"
-                if re.search(code_pattern, text_content, re.IGNORECASE) or re.search(code_pattern_no_dash, text_content, re.IGNORECASE):
-                    score += 50
-                    
-                # Check for manufacturer + code in content
-                if p_man in text_content.lower() and (p_code in text_content.lower() or p_code.replace('-', '') in text_content.lower()):
-                    score += 20
-                    
-                # Filename matching (backup/supporting signal, not sole)
-                fname_lower = file_meta["original_file_name"].lower()
-                if p_code in fname_lower or p_code.replace('-', '') in fname_lower:
-                    score += 15
-                    
-                # Name in content
-                if p_name in text_content.lower():
-                    score += 10
-                    
-                # Category similarity
-                cat_terms = p.category.lower().split()
-                for term in cat_terms:
-                    if len(term) > 3 and term in text_content.lower():
-                        score += 2
-                        
-                if score > 0:
-                    scores[p.id] = (p, score)
-            
-            if scores:
-                sorted_matches = sorted(scores.values(), key=lambda x: x[1], reverse=True)
-                top_product, top_score = sorted_matches[0]
-                
-                # Format matches
-                for p, scr in sorted_matches:
-                    possible_matches.append({
-                        "product_id": p.id,
-                        "product_code": p.product_code,
-                        "name": p.name,
-                        "confidence": min(0.99, round(scr / 100.0, 2))
-                    })
-                
-                # Ambiguity check
-                if len(sorted_matches) > 1:
-                    second_product, second_score = sorted_matches[1]
-                    if top_score - second_score < 15 or top_score < 30:
-                        is_ambiguous = True
-                elif top_score < 30:
-                    is_ambiguous = True
-                
-                if not is_ambiguous:
-                    matched_product = top_product
-                    confidence = min(0.99, round(top_score / 100.0, 2))
-        # Process document based on format
-        extracted_data = {}
-        if lower_fname.endswith(".pdf"):
+        # 1. Process CSV files
+        if orig_lower.endswith(".csv") and os.path.exists(file_path):
             try:
-                extracted_data = PDFProcessor.extract_pdf_content(file_meta["file_path"])
+                with open(file_path, "r", encoding="utf-8-sig", errors="ignore") as f:
+                    reader = csv.DictReader(f)
+                    rows = list(reader)
+                    if rows:
+                        first_row = rows[0]
+                        row_id = (first_row.get("ID") or first_row.get("id") or first_row.get("Model") or first_row.get("Product Code") or "").strip()
+                        row_ver = (first_row.get("Version") or first_row.get("version") or "2").strip()
+                        version_detected = f"v{row_ver}.0" if "." not in row_ver else f"v{row_ver}"
+
+                        # Extract specs
+                        specs: Dict[str, str] = {}
+                        for k, v in first_row.items():
+                            if v and k.strip().lower() not in NON_SPEC_FIELDS:
+                                specs[k.strip()] = str(v).strip()
+
+                        extracted_data["extracted_attributes"] = specs
+                        extracted_data["pages_count"] = len(rows)
+                        extracted_data["extracted_summary"] = f"Ingested {len(specs)} technical attributes from {orig_name}. Detected Version {version_detected}."
+
+                        # Match product
+                        if row_id:
+                            matched_product = db.query(Product).filter(Product.product_code == row_id).first()
+                            if not matched_product:
+                                # Create product dynamically if not found
+                                prod_name = first_row.get("Name") or row_id
+                                prod_cat = first_row.get("Category") or "Industrial Equipment"
+                                matched_product = Product(
+                                    product_code=row_id,
+                                    name=prod_name,
+                                    category=prod_cat,
+                                    manufacturer="InduCore",
+                                    status="ACTIVE",
+                                    health_score=95
+                                )
+                                db.add(matched_product)
+                                db.commit()
+                                db.refresh(matched_product)
+            except Exception as csv_err:
+                extracted_data["extracted_summary"] = f"CSV read note: {csv_err}"
+
+        # 2. Process PDF files
+        elif orig_lower.endswith(".pdf") and os.path.exists(file_path):
+            try:
+                pdf_res = PDFProcessor.extract_pdf_content(file_path)
+                if pdf_res:
+                    extracted_data.update(pdf_res)
             except Exception as pdf_err:
-                extracted_data = {
-                    "pages_count": 1,
-                    "extracted_summary": f"PDF stored. Extraction note: {pdf_err}",
-                    "extracted_attributes": {},
-                    "source_citations": []
-                }
-        elif lower_fname.endswith((".xlsx", ".xls", ".csv")):
-            try:
-                extracted_data = TabularProcessor.extract_tabular_content(file_meta["file_path"], file_meta["original_file_name"])
-            except Exception as tab_err:
-                extracted_data = {
-                    "pages_count": 1,
-                    "extracted_summary": f"Spreadsheet stored. Extraction note: {tab_err}",
-                    "extracted_attributes": {},
-                    "source_citations": []
-                }
-        elif lower_fname.endswith((".png", ".jpg", ".jpeg", ".webp")):
-            try:
-                extracted_data = ImageProcessor.extract_image_content(file_meta["file_path"], file_meta["original_file_name"])
-            except Exception as img_err:
-                extracted_data = {
-                    "pages_count": 1,
-                    "extracted_summary": f"Image stored. Extraction note: {img_err}",
-                    "extracted_attributes": {},
-                    "source_citations": []
-                }
-        elif lower_fname.endswith((".docx", ".doc")):
-            try:
-                extracted_data = DocxProcessor.extract_docx_content(file_meta["file_path"], file_meta["original_file_name"])
-            except Exception as docx_err:
-                extracted_data = {
-                    "pages_count": 1,
-                    "extracted_summary": f"Word document stored. Extraction note: {docx_err}",
-                    "extracted_attributes": {},
-                    "source_citations": []
-                }
+                extracted_data["extracted_summary"] = f"PDF stored. Extraction note: {pdf_err}"
 
-        pages_count = extracted_data.get("pages_count", 1)
-        extracted_summary = extracted_data.get("extracted_summary") or f"Ingested {file_meta['original_file_name']} with verified processing."
-        extracted_attributes = extracted_data.get("extracted_attributes") or {}
-        if "sheets" in extracted_data:
-            extracted_attributes["sheets"] = extracted_data["sheets"]
-        source_citations = extracted_data.get("source_citations") or []
+        # 3. Match product if not matched yet
+        if not matched_product:
+            if product_id:
+                matched_product = db.query(Product).filter(Product.id == product_id).first()
+            else:
+                # Try matching by filename against all products in DB
+                all_prods = db.query(Product).all()
+                for p in all_prods:
+                    if p.product_code.lower() in orig_lower:
+                        matched_product = p
+                        break
 
+        # 4. Save Document record
         doc_record = Document(
             file_name=file_meta["file_name"],
-            original_file_name=file_meta["original_file_name"],
-            file_path=file_meta["file_path"],
+            original_file_name=orig_name,
+            file_path=file_path,
             document_type=file_meta["document_type"],
             file_size=file_meta["file_size"],
             file_size_formatted=file_meta["file_size_formatted"],
@@ -182,19 +136,61 @@ class DocumentService:
         db.commit()
         db.refresh(doc_record)
 
-        # Stage version change draft if confidently matched
-        if matched_product and not is_ambiguous:
-            DocumentService._stage_changes_for_product(db, matched_product, doc_record, file_meta)
-        # Automatically execute Product Extraction and Version Detection Pipeline
-        try:
-            from app.services.version_detection_service import VersionDetectionService
-            DocumentService.extract_product_intelligence(db, doc_record.id)
-            v_res = VersionDetectionService.analyze_document_version(db, doc_record.id)
-            db.refresh(doc_record)
-        except Exception as pipe_err:
-            pass
+        # 5. Detect changes against current product attributes
+        if matched_product and extracted_data.get("extracted_attributes"):
+            new_attrs = extracted_data["extracted_attributes"]
+            
+            # Fetch existing specs for this product
+            current_attrs_map = {}
+            if matched_product.current_version_id:
+                existing_attrs = db.query(ProductAttribute).filter(
+                    ProductAttribute.product_version_id == matched_product.current_version_id
+                ).all()
+                for ea in existing_attrs:
+                    current_attrs_map[ea.attribute_name.strip().lower()] = (ea.attribute_name, ea.attribute_value)
 
-        prod = db.query(Product).filter(Product.id == doc_record.product_id).first() if doc_record.product_id else None
+            for spec_key, new_val in new_attrs.items():
+                norm_key = spec_key.strip().lower()
+                if norm_key in current_attrs_map:
+                    canonical_name, old_val = current_attrs_map[norm_key]
+                    if old_val != str(new_val):
+                        # Check if change already recorded
+                        existing_chg = db.query(Change).filter(
+                            Change.product_id == matched_product.id,
+                            Change.attribute_name == canonical_name,
+                            Change.source_document == orig_name
+                        ).first()
+
+                        if not existing_chg:
+                            chg = Change(
+                                product_id=matched_product.id,
+                                attribute_name=canonical_name,
+                                old_value=old_val,
+                                new_value=str(new_val),
+                                change_type="MODIFICATION",
+                                source_document=orig_name,
+                                confidence=0.98,
+                                status="PENDING"
+                            )
+                            db.add(chg)
+                            db.commit()
+                            db.refresh(chg)
+
+                            # Create ChangeImpact record for E-commerce
+                            imp = ChangeImpact(
+                                change_id=chg.id,
+                                impact_type="E-commerce",
+                                affected_entity_type="Storefront Specification",
+                                affected_entity_id=matched_product.product_code,
+                                title=f"Storefront {canonical_name} Update ({old_val} → {new_val})",
+                                description=f"B2B online catalog specification for {matched_product.name} ({matched_product.product_code}) differs from newly ingested datasheet.",
+                                context_evidence=f"Uploaded {orig_name}: {canonical_name} = {new_val}",
+                                severity="high",
+                                reviewed=False,
+                                target_module_url="/ecommerce"
+                            )
+                            db.add(imp)
+                            db.commit()
 
         return DocumentUploadResponse(
             id=doc_record.id,
@@ -205,13 +201,11 @@ class DocumentService:
             file_size_formatted=doc_record.file_size_formatted,
             processing_status=doc_record.processing_status,
             product_id=doc_record.product_id,
-            product_model=prod.product_code if prod else None,
+            product_model=matched_product.product_code if matched_product else None,
             match_confidence=doc_record.match_confidence,
-            is_same_product_detected=bool(doc_record.product_id),
+            is_same_product_detected=bool(matched_product),
             uploaded_at=doc_record.uploaded_at,
-            message="Product identification is ambiguous. No update applied." if is_ambiguous else "Document uploaded, stored, and indexed successfully",
-            is_ambiguous=is_ambiguous,
-            possible_matches=possible_matches
+            message="Document uploaded, stored, and indexed successfully"
         )
 
     @staticmethod
@@ -420,30 +414,8 @@ class DocumentService:
         return items, total
 
     @staticmethod
-    def get_document_by_id(db: Session, document_id: int) -> Document:
-        doc = db.query(Document).filter(Document.id == document_id).first()
+    def get_document_by_id(db: Session, doc_id: int) -> Document:
+        doc = db.query(Document).filter(Document.id == doc_id).first()
         if not doc:
-            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
+            raise HTTPException(status_code=404, detail=f"Document ID {doc_id} not found")
         return doc
-
-    @staticmethod
-    def extract_product_intelligence(db: Session, document_id: int) -> ProductExtractionResponse:
-        doc = db.query(Document).filter(Document.id == document_id).first()
-        if not doc:
-            raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
-
-        # Run extraction using LLM service
-        extraction_res = ProductExtractionService.extract_product_intelligence(
-            document_id=doc.id,
-            file_name=doc.original_file_name,
-            extracted_text=doc.extracted_text,
-            extracted_attributes=doc.extracted_attributes or {},
-            source_citations=doc.source_citations or []
-        )
-
-        # Persist structured product intelligence in document record
-        doc.extracted_product_data = extraction_res.model_dump(mode="json")
-        db.commit()
-        db.refresh(doc)
-
-        return extraction_res

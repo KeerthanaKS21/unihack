@@ -128,7 +128,6 @@ export const api = {
   getProductChanges: (id: number) => request<any[]>(`/products/${id}/changes`),
   getProductCompliance: (id: number) => request<any[]>(`/products/${id}/compliance`),
   getProductCompatibility: (id: number) => request<any[]>(`/products/${id}/compatibility`),
-  approveProductSync: (id: number) => request<any>(`/products/${id}/approve-sync`, { method: 'POST' }),
 
   // Changes & Change Impacts
   getChanges: (params?: { product_id?: number; status?: string }) => {
@@ -159,7 +158,6 @@ export const api = {
 
   // Catalog Health & Issues
   getCatalogHealth: () => request<any>('/catalog-health'),
-  scanCatalogHealth: () => request<any>('/catalog-health/scan', { method: 'POST' }),
 
   getCatalogIssues: (params?: {
     page?: number;
@@ -168,7 +166,6 @@ export const api = {
     status?: string;
     severity?: string;
     product_id?: number;
-    search?: string;
   }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
@@ -177,7 +174,6 @@ export const api = {
     if (params?.status && params.status !== 'all') query.set('status', params.status);
     if (params?.severity && params.severity !== 'all') query.set('severity', params.severity);
     if (params?.product_id) query.set('product_id', String(params.product_id));
-    if (params?.search) query.set('search', params.search);
     const qs = query.toString();
     return request<{ total: number; page: number; limit: number; items: any[] }>(`/catalog-issues${qs ? `?${qs}` : ''}`);
   },
@@ -310,60 +306,9 @@ export const api = {
       body: JSON.stringify({ quantity, delivery_days: deliveryDays, comments }),
     }),
 
-  postQuoteMatch: (data: {
-    company?: string;
-    contactPerson?: string;
-    email?: string;
-    phone?: string;
-    referenceNumber?: string;
-    requirementText: string;
-  }) =>
-    request<any>('/quotes/match', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  postQuoteSimulateRevision: (data: {
-    quoteNumber?: string;
-    productModel?: string;
-    supplierName?: string;
-    originalQuantity: number;
-    newQuantity: number;
-    originalDeliveryDays: number;
-    newDeliveryDays: number;
-    unitPrice?: number;
-  }) =>
-    request<any>('/quotes/simulate-revision', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  // Sales Assistant
-  postSalesAssistantChat: (message: string, conversationId?: string) =>
-    request<any>('/sales-assistant/chat', {
+  askCatalogChat: (message: string, conversationId?: string) =>
+    request<any>('/catalog-ai/chat', {
       method: 'POST',
       body: JSON.stringify({ message, conversationId }),
     }),
-
-  // E-commerce
-  syncEcommerceCatalog: (productId: string | number) =>
-    request<any>(`/ecommerce/sync/${productId}`, {
-      method: 'POST',
-    }),
-
-  // Procurement
-  parseProcurementPrompt: (prompt: string) =>
-    request<any>('/procurement/parse-prompt', {
-      method: 'POST',
-      body: JSON.stringify({ prompt }),
-    }),
-
-  evaluateProcurement: (category: string, constraints: any[], quantity: number) =>
-    request<any>('/procurement/evaluate', {
-      method: 'POST',
-      body: JSON.stringify({ category, constraints, quantity }),
-    }),
-
-  getProcurementSchemas: () => request<any>('/procurement/schemas'),
 };
-

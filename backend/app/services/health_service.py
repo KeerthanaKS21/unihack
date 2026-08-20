@@ -79,7 +79,7 @@ def canonicalize_attribute_name(raw_name: str) -> str:
 class HealthService:
     """
     Deterministic Enterprise Catalog Health & Data Governance Engine.
-    Monitors ONLY real PostgreSQL database records.
+    Monitors ONLY real database records.
     """
 
     @classmethod

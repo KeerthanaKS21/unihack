@@ -55,6 +55,10 @@ from app.schemas.dashboard import (
     CatalogHealthSummary,
     DashboardSummaryResponse
 )
+from app.schemas.catalog_ai import (
+    CatalogAIChatRequest,
+    CatalogAIChatResponse
+)
 
 __all__ = [
     "ProductCreate",
@@ -95,5 +99,7 @@ __all__ = [
     "QuoteItemCreate",
     "QuoteItemResponse",
     "CatalogHealthSummary",
-    "DashboardSummaryResponse"
+    "DashboardSummaryResponse",
+    "CatalogAIChatRequest",
+    "CatalogAIChatResponse"
 ]
