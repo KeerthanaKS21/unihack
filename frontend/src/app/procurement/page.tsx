@@ -814,37 +814,20 @@ export default function ProcurementPage() {
             </div>
           )}
 
-          {/* ALTERNATIVES TAB */}
-          {activeTab === 'alternatives' && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-4 text-amber-950 flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <h5 className="text-xs font-bold">Tradeoff & Ingress Protection Inspector</h5>
-                  <p className="text-[11px] leading-relaxed text-amber-900 mt-0.5">
-                    Closest alternatives satisfy the core technical constraints but violate minor preferred rules. Critical specifications (like safety ratings) are prioritized over unit costs.
-                  </p>
-                </div>
-              </div>
-
-              {/* Explaining exact failure reasons when none exist */}
-              {searchResults.exactMatches.length === 0 && (
-                <div className="bg-slate-900 text-slate-300 p-5 rounded-2xl border border-slate-800 space-y-3 font-mono text-[11px] leading-relaxed">
-                  <span className="text-xs font-bold text-white uppercase block tracking-wider">
-                    Sourcing Failure Log: Why 100% Exact Match Failed
-                  </span>
-                  <div className="space-y-1.5">
-                    {searchResults.alternatives.map((alt: any) => (
-                      <div key={alt.id} className="flex gap-2">
-                        <span className="text-rose-500 font-bold shrink-0">[{alt.supplierName}]</span>
-                        <span>{alt.productModel} failed constraints: {alt.violations?.join('; ')}</span>
-                      </div>
-                    ))}
+              {/* ALTERNATIVES TAB */}
+              {activeTab === 'alternatives' && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-4 text-amber-950 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h5 className="text-xs font-bold">Tradeoff & Ingress Protection Inspector</h5>
+                      <p className="text-[11px] leading-relaxed text-amber-900 mt-0.5">
+                        Closest alternatives satisfy the core technical constraints but violate minor preferred rules. Critical specifications (like safety ratings) are prioritized over unit costs.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {searchResults.alternatives.map((alt: any) => {
                   const isNotRecommended = alt.status === 'Not Recommended';
                   return (

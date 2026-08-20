@@ -309,21 +309,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // 3. Catalog Issues from DB
-        const issuesRes = await api.getCatalogIssues().catch(() => null);
-        if (issuesRes && Array.isArray(issuesRes.items) && issuesRes.items.length > 0) {
-          setCatalogIssues(prev => prev.map(iss => {
-            const numMatch = iss.id.match(/\d+/);
-            const numId = numMatch ? parseInt(numMatch[0], 10) : null;
-            const dbIss = numId ? issuesRes.items.find((i: any) => i.id === numId) : null;
-            if (dbIss) {
-              return {
-                ...iss,
-                status: dbIss.status.toLowerCase() as any,
-                resolvedValue: dbIss.resolved_value || iss.resolvedValue,
-              };
-            }
-            return iss;
-          }));
+        const issuesRes = await api.getCatalogIssues({ limit: 100 }).catch(() => null);
+        if (issuesRes && Array.isArray(issuesRes.items)) {
+          setCatalogIssues(issuesRes.items.map((dbIss: any) => ({
+            id: String(dbIss.id),
+            productId: String(dbIss.product_id),
+            productName: dbIss.product_name || 'Product Record',
+            productModel: dbIss.product_model || 'SKU',
+            issueType: dbIss.issue_type,
+            field: dbIss.field,
+            title: dbIss.title,
+            description: dbIss.description,
+            severity: dbIss.severity || 'medium',
+            status: (dbIss.status || 'open').toLowerCase() as any,
+            evidence: dbIss.evidence,
+            aiRecommendation: dbIss.ai_recommendation,
+            resolvedValue: dbIss.resolution_value,
+            resolvedAt: dbIss.resolved_at,
+            resolvedBy: dbIss.resolved_by
+          })));
         }
 
         // 4. Quotations from DB
@@ -661,7 +665,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const approveEcommerceUpdate = async () => {
     // Look up unreviewed e-commerce impacts for the active product
     const unreviewedEcomImpacts = changeImpacts.filter(
-      i => !i.reviewed && (i.productId === activeProduct.id || i.productId === `prod-${activeProduct.model.toLowerCase()}`) && (i.domain === 'E-commerce' || i.impactType === 'E-commerce')
+      i => !i.reviewed && (i.productId === activeProduct.id || i.productId === `prod-${activeProduct.model.toLowerCase()}`) && (i.domain === 'E-commerce' || (i as any).impactType === 'E-commerce')
     );
     if (unreviewedEcomImpacts.length > 0) {
       showToast({

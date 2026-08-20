@@ -133,6 +133,7 @@ export interface CatalogIssue {
   id: string;
   productId: string;
   productModel: string;
+  productName?: string;
   issueType: 
     | 'missing' 
     | 'conflict' 
@@ -142,20 +143,28 @@ export interface CatalogIssue {
     | 'outdated' 
     | 'compliance' 
     | 'broken_relationship' 
-    | 'image_mismatch';
-  field: string;
+    | 'image_mismatch'
+    | 'low_confidence'
+    | string;
+  field?: string;
   title: string;
   description: string;
-  sources: { sourceName: string; value: string; priority: 'high' | 'medium' | 'low'; confidence: number }[];
-  aiRecommendation: {
-    suggestedValue: string;
-    reasoning: string;
-    confidence: number;
+  sources?: { sourceName: string; value: string; priority?: 'high' | 'medium' | 'low'; confidence?: number }[];
+  evidence?: string;
+  severity?: 'critical' | 'high' | 'medium' | 'low' | string;
+  aiRecommendation?: {
+    suggestedValue?: string;
+    suggestedCategory?: string;
+    reasoning?: string;
+    reason?: string;
+    confidence?: number;
     standardReference?: string;
-  };
-  status: 'open' | 'resolved' | 'ignored';
+    [key: string]: any;
+  } | any;
+  status: 'open' | 'resolved' | 'ignored' | 'in_review' | 'rejected' | string;
   resolvedValue?: string;
   resolvedAt?: string;
+  resolvedBy?: string;
 }
 
 export interface ComplianceRecord {
