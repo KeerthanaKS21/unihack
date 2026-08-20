@@ -271,7 +271,71 @@ export default function UploadIngestPage() {
     else if (ext === '.jpg') mime = 'image/jpeg';
     else if (ext === '.docx') mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-    const dummyContent = `Industrial Product Intelligence Sample File: ${sampleName}`;
+    let dummyContent = '';
+    if (sampleName.includes('technical_spec')) {
+      dummyContent = `INDUSTRIAL TECHNICAL SPECIFICATION SHEET
+Manufacturer: Nova Industrial Systems
+Model Identifier: NX-450
+Product Name: High Efficiency 3-Phase Industrial Electric Motor
+Product Category: Electric Motors & Drives
+
+SPECIFICATIONS:
+Rated Power: 7.5 kW (Output Power: 10 HP)
+Rated Voltage: 415 V / 50 Hz
+Rated Current: 14.2 A
+Synchronous Speed: 1460 RPM
+Power Factor: 0.86
+Frame Size: 132M
+Enclosure Protection: IP55 TEFC
+Insulation Class: Class F (155°C)
+Full Load Efficiency: IE3 (91.4%)
+Duty Cycle: S1 Continuous
+Ambient Temperature: -20°C to +60°C
+Unit Weight: 48 kg
+Safety Standard: IEC 60034-1 Electric Motor Safety Standard
+Hazardous Area Rating: ATEX Directive 2014/34/EU (Zone 2)
+Environmental Compliance: RoHS 3 Directive (2015/863)
+`;
+    } else if (sampleName.includes('csv') || sampleName.includes('inventory')) {
+      dummyContent = `ID,Name,Category,Rated Power,Rated Voltage,Synchronous Speed,Enclosure Protection,Ambient Temperature,Safety Standard,ATEX Rating,RoHS Status
+NX-450,Nova High Efficiency Motor,Electric Motors,7.5 kW,415 V,1460 RPM,IP55,-20°C to +60°C,IEC 60034-1,ATEX Zone 2,RoHS 3 Compliant
+V-100,VFD Controller Drive,Automation,15.0 kW,415 V,2900 RPM,IP65,-10°C to +50°C,IEC 61800-5-1,Non-Hazardous,RoHS 3 Compliant
+`;
+    } else if (sampleName.includes('catalog')) {
+      dummyContent = `SUPPLIER CATALOGUE & SPECIFICATION MATRIX
+Manufacturer: ABB Industrial Automation
+Model: VTX-550 Variable Speed AC Drive
+Rated Power: 15.0 kW
+Input Voltage: 380-480 V (3-Phase)
+Output Current: 32.0 A
+Enclosure: IP66 Heavy Duty NEMA 4X
+Efficiency: 97.8%
+Cooling Method: Forced Air Cooling
+Compliance: CE, UL 508C, RoHS 3 Compliant
+`;
+    } else if (sampleName.includes('nameplate') || sampleName.includes('photo')) {
+      dummyContent = `NAMEPLATE OCR EXTRACTED TEXT:
+Siemens 1LE1001-1DB23-4FA4
+3~ Mot. 132M IP55 48kg
+50 Hz 7.5 kW 415V 14.5A
+1465 /min cos 0.85 IE3-90.4%
+IEC/EN 60034-1 Ex ec IIC T3 Gc
+ATEX 2014/34/EU RoHS 3 COMPLIANT
+`;
+    } else {
+      dummyContent = `PRODUCT USER MANUAL & REGULATORY DECLARATION
+Manufacturer: InduCore Equipment
+Model: GB-100 Industrial Gearbox
+Gear Ratio: 12:1
+Rated Torque: 300 Nm
+Input Speed: 1440 RPM
+Efficiency: 96.5%
+Protection Class: IP65
+Operating Temperature: -30°C to +70°C
+Compliance: ISO 9001, IEC 60034, ATEX Zone 22, RoHS 3
+`;
+    }
+
     const blob = new Blob([dummyContent], { type: mime });
     const file = new File([blob], sampleName, { type: mime });
     stageFile(file);
@@ -601,35 +665,47 @@ export default function UploadIngestPage() {
                   const status = doc.processing_status || doc.status || 'Uploaded';
                   const downloadUrl = `http://localhost:8000/uploads/${doc.file_name || fileName}`;
 
-                  const openDetails = () => setViewingDocument({
-                    id: String(doc.id),
-                    filename: fileName,
-                    productId: String(doc.product_id || 'prod-xyz-450'),
-                    productModel: prodModel,
-                    documentType: docType,
-                    uploadedOn: uploadDate,
-                    fileSize: sizeFormatted,
-                    version: doc.version_detected || doc.version || '-',
-                    status: status,
-                    matchConfidence: doc.match_confidence || doc.matchConfidence || 0.95,
-                    isSameProductDetected: true,
-                    detectedChangesSummary: doc.extracted_summary || 'Document stored in repository with verified SHA-256 checksum.',
-                    pagesCount: doc.pages_count || doc.pagesCount || 1,
-                    extractedAttributes: (doc.extracted_attributes && Object.keys(doc.extracted_attributes).length > 0)
-                      ? doc.extracted_attributes
-                      : {
-                          'Original File': fileName,
-                          'Document Type': docType,
-                          'File Size': sizeFormatted,
-                          'Storage Status': 'Persisted in Database'
-                        },
-                    sourceCitations: (doc.source_citations && doc.source_citations.length > 0)
-                      ? doc.source_citations
-                      : [
-                          { page: 1, snippet: `Authoritative ${docType} document retained for traceability.` }
-                        ],
-                    extractedText: doc.extracted_text
-                  });
+                  const openDetails = () => {
+                    const mergedAttrs: Record<string, any> = {};
+                    if (doc.extracted_attributes && Object.keys(doc.extracted_attributes).length > 0) {
+                      Object.assign(mergedAttrs, doc.extracted_attributes);
+                    }
+                    if (doc.extracted_product_data?.specifications) {
+                      doc.extracted_product_data.specifications.forEach((s: any) => {
+                        const label = (s.attribute_name || 'Spec').replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+                        mergedAttrs[label] = s.raw_value || `${s.value} ${s.unit || ''}`.trim();
+                      });
+                    }
+                    if (Object.keys(mergedAttrs).length === 0) {
+                      mergedAttrs['Original File'] = fileName;
+                      mergedAttrs['Document Type'] = docType;
+                      mergedAttrs['File Size'] = sizeFormatted;
+                      mergedAttrs['Storage Status'] = 'Persisted in Database';
+                    }
+
+                    setViewingDocument({
+                      id: String(doc.id),
+                      filename: fileName,
+                      productId: String(doc.product_id || 'prod-xyz-450'),
+                      productModel: doc.extracted_product_data?.product?.model || prodModel,
+                      documentType: docType,
+                      uploadedOn: uploadDate,
+                      fileSize: sizeFormatted,
+                      version: doc.version_detected || doc.version || '-',
+                      status: status,
+                      matchConfidence: doc.match_confidence || doc.matchConfidence || 0.95,
+                      isSameProductDetected: true,
+                      detectedChangesSummary: doc.extracted_summary || 'Document stored in repository with verified SHA-256 checksum.',
+                      pagesCount: doc.pages_count || doc.pagesCount || 1,
+                      extractedAttributes: mergedAttrs,
+                      sourceCitations: (doc.source_citations && doc.source_citations.length > 0)
+                        ? doc.source_citations
+                        : [
+                            { page: 1, snippet: `Authoritative ${docType} document retained for traceability.` }
+                          ],
+                      extractedText: doc.extracted_text
+                    });
+                  };
 
                   return (
                     <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">

@@ -166,13 +166,16 @@ class DocumentService:
             file_size_formatted=file_meta["file_size_formatted"],
             mime_type=file_meta["mime_type"],
             content_hash=file_meta["content_hash"],
-            product_id=product_id,
+            product_id=matched_product.id if matched_product else product_id,
             uploaded_by=uploaded_by,
             processing_status="REVIEW_REQUIRED" if is_ambiguous else "PROCESSED",
             version_detected="v2.0" if "2026" in file_meta["original_file_name"] or "v2" in file_meta["original_file_name"].lower() else "v1.0",
             match_confidence=confidence,
-            pages_count=4 if "old" in file_meta["original_file_name"] else 2,
-            extracted_summary=json.dumps({"status": "ambiguous", "possible_matches": possible_matches}) if is_ambiguous else f"Ingested {file_meta['original_file_name']} with verified OCR extraction."
+            pages_count=pages_count,
+            extracted_summary=json.dumps({"status": "ambiguous", "possible_matches": possible_matches}) if is_ambiguous else extracted_summary,
+            extracted_attributes=extracted_attributes,
+            source_citations=source_citations,
+            extracted_text=extracted_data.get("extracted_text")
         )
 
         db.add(doc_record)
