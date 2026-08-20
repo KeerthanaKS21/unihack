@@ -123,7 +123,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // State
   const [products, setProducts] = useState<Product[]>(mockProducts);
   const [activeProduct, setActiveProduct] = useState<Product>(mockProducts[0]);
-  const [documents, setDocuments] = useState<IngestedDocument[]>(mockDocuments);
+  const [documents, setDocuments] = useState<IngestedDocument[]>([]);
   const [ingestionState, setIngestionState] = useState<IngestionStepState | null>(null);
 
   const [productChanges, setProductChanges] = useState<ProductChange[]>(mockProductChanges);
@@ -741,7 +741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Ask Catalog AI Chat
-  const sendAskCatalogMessage = (userText: string) => {
+  const sendAskCatalogMessage = async (userText: string) => {
     const userMsg: AIMessage = {
       id: 'cat-' + Math.random().toString(36).substring(2, 7),
       sender: 'user',
@@ -751,46 +751,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAskCatalogMessages(prev => [...prev, userMsg]);
 
-    setTimeout(() => {
-      let reply = '';
-      let citations: AIMessage['sourceCitations'] = [];
-      const lower = userText.toLowerCase();
+    try {
+      const res = await api.askCatalogChat(userText, 'catalog-chat-session');
 
-      if (lower.includes('voltage') || lower.includes('415') || lower.includes('where')) {
-        reply = `The **415 V** specification is grounded in:\n\n1. **OEM Engineering Datasheet v2.0** (\`technical_spec_2026.pdf\`, Page 2, Sec 3.1: "Rated Operating Voltage 415V AC ±10% 50Hz 3-Phase").\n2. **SAP ERP Material Master Record** (\`MAT-77092-XYZ450\`, 415V).\n\nThe 440V listing on the web storefront was identified as a legacy template conflict and is pending resolution.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 2, snippet: '415V ±10% 50Hz 3-Phase Delta connection', verified: true },
-          { docName: 'motor_specs.pdf', page: 1, snippet: 'Standard 415V 50Hz electrical specification', verified: true }
-        ];
-      } else if (lower.includes('ip55') || lower.includes('protection') || lower.includes('ingress')) {
-        reply = `Products in your catalog certified for **IP55** (Dust & Water Jet protection):\n\n• **XYZ-450** (Siemens 7.5 kW Motor - Cert: TUV-IND-2026-8841)\n• **W22-IE4-7.5** (WEG 7.5 kW Super Premium Motor - Cert: BR-2024-WEG-9912)\n• **CG-Apex 7.5kW** (Crompton Greaves 7.5 kW Motor)`;
-        citations = [
-          { docName: 'certificate.pdf', page: 1, snippet: 'IP55 Enclosure protection test compliance IEC 60529', verified: true }
-        ];
-      } else if (lower.includes('version') || lower.includes('v1') || lower.includes('v2')) {
-        reply = `**Revisions between v1.4 and v2.0 for XYZ-450**:\n\n• Power: 5.5 kW → 7.5 kW (Source: \`technical_spec_2026.pdf\`, Page 1)\n• Speed: 1440 RPM → 1460 RPM (Source: \`technical_spec_2026.pdf\`, Page 2)\n• Weight: 42 kg → 45 kg (Source: \`technical_spec_2026.pdf\`, Page 4)\n• Voltage: 415 V (Unchanged across versions)`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Table 1: Mechanical and Electrical Revision Comparison', verified: true }
-        ];
-      } else {
-        reply = `Retrieved verified catalog information from indexed datasheets and conformity certificates. Zero external hallucinations allowed.`;
-        citations = [
-          { docName: 'technical_spec_2026.pdf', page: 1, snippet: 'Indexed document reference', verified: true }
-        ];
+      const citations = (res.sources || []).map((cite: any) => ({
+        docName: cite.docName || cite.documentId || 'Source Document',
+        page: cite.page || 1,
+        snippet: cite.snippet || '',
+        verified: true
+      }));
+
+      const isMissingData = res.answer.toLowerCase().includes('unavailable') || 
+                            res.answer.toLowerCase().includes('insufficient') ||
+                            res.answer.toLowerCase().includes("couldn't find") ||
+                            res.answer.toLowerCase().includes("could not find");
+
+      let actionCard = undefined;
+      if (res.hasConflict) {
+        actionCard = {
+          title: 'Resolve Conflicts in Catalog Issues',
+          label: 'Open Conflict Resolver',
+          url: '/catalog-issues?filter=conflict'
+        };
+      } else if (isMissingData) {
+        actionCard = {
+          title: 'Upload Missing Data / Documents',
+          label: 'Open Upload & Ingest',
+          url: '/upload'
+        };
       }
 
       const botMsg: AIMessage = {
         id: 'cat-' + Math.random().toString(36).substring(2, 7),
         sender: 'assistant',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: reply,
+        text: res.answer,
         routedModule: 'Catalog Exploration',
-        confidence: 0.99,
-        sourceCitations: citations
+        confidence: res.confidence,
+        sourceCitations: citations,
+        isMissingDataDemonstration: isMissingData,
+        actionCard: actionCard
       };
 
       setAskCatalogMessages(prev => [...prev, botMsg]);
-    }, 600);
+    } catch (err: any) {
+      console.error('Error fetching Catalog AI response:', err);
+      const botMsg: AIMessage = {
+        id: 'cat-' + Math.random().toString(36).substring(2, 7),
+        sender: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: "I couldn't retrieve the catalog information right now. Please try again.",
+        routedModule: 'Catalog Exploration',
+        confidence: 0.0
+      };
+      setAskCatalogMessages(prev => [...prev, botMsg]);
+    }
   };
 
   return (

@@ -50,74 +50,6 @@ def seed_database():
             db.query(AuditLog).delete()
             db.commit()
 
-        print("Seeding Documents...")
-        doc1 = Document(
-            file_name="technical_spec_2026.pdf",
-            original_file_name="technical_spec_2026.pdf",
-            file_path="uploads/technical_spec_2026.pdf",
-            document_type="DATASHEET",
-            file_size=5033164,
-            file_size_formatted="4.8 MB",
-            mime_type="application/pdf",
-            content_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            uploaded_by="Engineering Lead",
-            processing_status="PROCESSED",
-            version_detected="v2.0",
-            match_confidence=0.94,
-            pages_count=6,
-            extracted_summary="Power upgraded (5.5 kW → 7.5 kW), Speed adjusted (1440 → 1460 RPM), Weight (42 → 45 kg)"
-        )
-        doc2 = Document(
-            file_name="motor_old.pdf",
-            original_file_name="motor_old.pdf",
-            file_path="uploads/motor_old.pdf",
-            document_type="DATASHEET",
-            file_size=3355443,
-            file_size_formatted="3.2 MB",
-            mime_type="application/pdf",
-            content_hash="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-            uploaded_by="Archive Migration",
-            processing_status="PROCESSED",
-            version_detected="v1.4",
-            match_confidence=1.0,
-            pages_count=4,
-            extracted_summary="Baseline Siemens XYZ-450 v1.4 legacy specification release 2024."
-        )
-        doc3 = Document(
-            file_name="certificate_xyz450.pdf",
-            original_file_name="certificate_xyz450.pdf",
-            file_path="uploads/certificate_xyz450.pdf",
-            document_type="CERTIFICATE",
-            file_size=1468006,
-            file_size_formatted="1.4 MB",
-            mime_type="application/pdf",
-            content_hash="5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
-            uploaded_by="Quality Assurance",
-            processing_status="PROCESSED",
-            version_detected="v2.0",
-            match_confidence=0.98,
-            pages_count=2,
-            extracted_summary="CE & IEC 60034-1 Conformity Certificate for XYZ-450."
-        )
-        doc4 = Document(
-            file_name="supplier_catalog.xlsx",
-            original_file_name="supplier_catalog.xlsx",
-            file_path="uploads/supplier_catalog.xlsx",
-            document_type="CATALOG",
-            file_size=2097152,
-            file_size_formatted="2.0 MB",
-            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            content_hash="4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
-            uploaded_by="Procurement Desk",
-            processing_status="PROCESSED",
-            version_detected="2026-Q3",
-            match_confidence=0.91,
-            pages_count=12,
-            extracted_summary="Supplier pricing, lead time, and warehouse inventory matrix."
-        )
-        db.add_all([doc1, doc2, doc3, doc4])
-        db.commit()
-
         print("Seeding Products & Versions...")
         # 1. XYZ-450 Industrial Motor
         p1 = Product(
@@ -178,16 +110,13 @@ def seed_database():
         db.commit()
 
         # Link documents to p1
-        doc1.product_id = p1.id
-        doc2.product_id = p1.id
-        doc3.product_id = p1.id
         db.commit()
 
         # Versions for XYZ-450
         v1 = ProductVersion(
             product_id=p1.id,
             version_number="v1.4",
-            source_document_id=doc2.id,
+            source_document_id=None,
             effective_date=datetime.utcnow() - timedelta(days=500),
             is_current=False,
             verified_by="Archive System",
@@ -196,7 +125,7 @@ def seed_database():
         v2 = ProductVersion(
             product_id=p1.id,
             version_number="v2.0",
-            source_document_id=doc1.id,
+            source_document_id=None,
             effective_date=datetime.utcnow(),
             is_current=True,
             verified_by="Engineering Lead",
@@ -219,13 +148,13 @@ def seed_database():
         ]
         # Attributes for v2.0
         v2_attrs = [
-            ProductAttribute(product_version_id=v2.id, attribute_name="Rated Output", attribute_value="7.5 kW (10 HP)", normalized_value=7.5, unit="kW", confidence=0.98, source_document_id=doc1.id, source_page=1),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Rated Voltage", attribute_value="415 V ±10% 3-Phase", normalized_value=415.0, unit="V", confidence=0.99, source_document_id=doc1.id, source_page=2),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Synchronous Speed", attribute_value="1460 RPM at 50Hz", normalized_value=1460.0, unit="RPM", confidence=0.97, source_document_id=doc1.id, source_page=2),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Protection Degree", attribute_value="IP55 Dust & Water Jet", unit="IP", confidence=0.99, source_document_id=doc1.id, source_page=4),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Gross Weight", attribute_value="45.2 kg", normalized_value=45.2, unit="kg", confidence=0.96, source_document_id=doc1.id, source_page=4),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Full Load Efficiency", attribute_value="91.2%", normalized_value=91.2, unit="%", confidence=0.98, source_document_id=doc1.id, source_page=1),
-            ProductAttribute(product_version_id=v2.id, attribute_name="Standard Compliance", attribute_value="IEC 60034-1 / IS 12615:2018", confidence=0.98, source_document_id=doc1.id, source_page=5)
+            ProductAttribute(product_version_id=v2.id, attribute_name="Rated Output", attribute_value="7.5 kW (10 HP)", normalized_value=7.5, unit="kW", confidence=0.98, source_document_id=None, source_page=1),
+            ProductAttribute(product_version_id=v2.id, attribute_name="Rated Voltage", attribute_value="415 V ±10% 3-Phase", normalized_value=415.0, unit="V", confidence=0.99, source_document_id=None, source_page=2),
+            ProductAttribute(product_version_id=v2.id, attribute_name="Synchronous Speed", attribute_value="1460 RPM at 50Hz", normalized_value=1460.0, unit="RPM", confidence=0.97, source_document_id=None, source_page=2),
+            ProductAttribute(product_version_id=v2.id, attribute_name="Protection Degree", attribute_value="IP55 Dust & Water Jet", unit="IP", confidence=0.99, source_document_id=None, source_page=4),
+            ProductAttribute(product_version_id=v2.id, attribute_name="Gross Weight", attribute_value="45.2 kg", normalized_value=45.2, unit="kg", confidence=0.96, source_document_id=None, source_page=4),
+            ProductAttribute(product_version_id=v2.id, attribute_name="Full Load Efficiency", attribute_value="91.2%", normalized_value=91.2, unit="%", confidence=0.98, source_document_id=None, source_page=1),
+            ProductAttribute(product_version_id=v2.id, attribute_name="Standard Compliance", attribute_value="IEC 60034-1 / IS 12615:2018", confidence=0.98, source_document_id=None, source_page=5)
         ]
         db.add_all(v1_attrs + v2_attrs)
         db.commit()
@@ -438,10 +367,10 @@ def seed_database():
         db.commit()
 
         print("Seeding Compliance Certificates...")
-        c1 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="IEC-60034-2024-098", standard="IEC 60034-1 Rotating Electrical Machines", issue_date=datetime.utcnow() - timedelta(days=200), expiry_date=datetime.utcnow() + timedelta(days=900), status="VALID", verification_status="Compliant", ai_confidence=0.99, ai_recommendation="Valid international standard conformity certificate.")
-        c2 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="CE-LVD-2024-4412", standard="CE Low Voltage Directive 2014/35/EU", issue_date=datetime.utcnow() - timedelta(days=300), expiry_date=datetime.utcnow() + timedelta(days=450), status="VALID", verification_status="Compliant", ai_confidence=0.98, ai_recommendation="Compliant with EU market safety declarations.")
-        c3 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="ATEX-2023-EX-009", standard="ATEX Directive 2014/34/EU (Zone 2 Hazardous)", issue_date=datetime.utcnow() - timedelta(days=680), expiry_date=datetime.utcnow() + timedelta(days=45), status="EXPIRING", verification_status="Action Required", ai_confidence=0.95, ai_recommendation="Certificate expires in 45 days. Request re-certification from Siemens Quality Desk.", issue_description="Expiring in 45 days. Needs renewal submission.")
-        c4 = Certificate(product_id=p1.id, document_id=doc3.id, certificate_number="ROHS-3-2025-IND", standard="RoHS 3 Directive (EU 2015/863)", issue_date=datetime.utcnow() - timedelta(days=100), expiry_date=datetime.utcnow() + timedelta(days=620), status="VALID", verification_status="Compliant", ai_confidence=0.98, ai_recommendation="Lead and hazardous material threshold verified compliant.")
+        c1 = Certificate(product_id=p1.id, document_id=None, certificate_number="IEC-60034-2024-098", standard="IEC 60034-1 Rotating Electrical Machines", issue_date=datetime.utcnow() - timedelta(days=200), expiry_date=datetime.utcnow() + timedelta(days=900), status="VALID", verification_status="Compliant", ai_confidence=0.99, ai_recommendation="Valid international standard conformity certificate.")
+        c2 = Certificate(product_id=p1.id, document_id=None, certificate_number="CE-LVD-2024-4412", standard="CE Low Voltage Directive 2014/35/EU", issue_date=datetime.utcnow() - timedelta(days=300), expiry_date=datetime.utcnow() + timedelta(days=450), status="VALID", verification_status="Compliant", ai_confidence=0.98, ai_recommendation="Compliant with EU market safety declarations.")
+        c3 = Certificate(product_id=p1.id, document_id=None, certificate_number="ATEX-2023-EX-009", standard="ATEX Directive 2014/34/EU (Zone 2 Hazardous)", issue_date=datetime.utcnow() - timedelta(days=680), expiry_date=datetime.utcnow() + timedelta(days=45), status="EXPIRING", verification_status="Action Required", ai_confidence=0.95, ai_recommendation="Certificate expires in 45 days. Request re-certification from Siemens Quality Desk.", issue_description="Expiring in 45 days. Needs renewal submission.")
+        c4 = Certificate(product_id=p1.id, document_id=None, certificate_number="ROHS-3-2025-IND", standard="RoHS 3 Directive (EU 2015/863)", issue_date=datetime.utcnow() - timedelta(days=100), expiry_date=datetime.utcnow() + timedelta(days=620), status="VALID", verification_status="Compliant", ai_confidence=0.98, ai_recommendation="Lead and hazardous material threshold verified compliant.")
         db.add_all([c1, c2, c3, c4])
         db.commit()
 

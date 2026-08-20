@@ -248,4 +248,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ quantity, delivery_days: deliveryDays, comments }),
     }),
+
+  askCatalogChat: (message: string, conversationId?: string) =>
+    request<any>('/catalog-ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, conversationId }),
+    }),
 };
