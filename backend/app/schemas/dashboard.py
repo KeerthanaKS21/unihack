@@ -11,8 +11,16 @@ class CatalogHealthSummary(BaseModel):
     duplicates: int = 0
     outdated: int = 0
     compliance_issues: int = 0
+    invalid_units: Optional[int] = 0
+    invalid_values: Optional[int] = 0
+    wrong_category: Optional[int] = 0
+    broken_relationships: Optional[int] = 0
+    image_mismatch: Optional[int] = 0
+    low_confidence: Optional[int] = 0
     overall_health: float = 100.0
     health_score: float = 100.0
+    issues: Optional[Dict[str, Any]] = None
+    components: Optional[Dict[str, Any]] = None
 
 class DashboardSummaryResponse(BaseModel):
     total_products: int

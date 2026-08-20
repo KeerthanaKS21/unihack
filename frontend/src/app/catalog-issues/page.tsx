@@ -74,40 +74,34 @@ function CatalogIssuesContent() {
       setIssuesList(res.items || []);
       setTotalCount(res.total || 0);
 
-      // Fetch health summary or full open issues list for exact tab counts
+      // Fetch health summary and open issues for tab counts
       const health = await api.getCatalogHealth().catch(() => null);
-      if (health && health.issues) {
-        const iss = health.issues;
-        setTabCounts({
-          all: health.products_with_issues || (iss.missing_data + iss.conflicts + iss.duplicates + iss.outdated + iss.invalid_units + iss.wrong_category + iss.compliance + iss.broken_relationships + iss.low_confidence),
-          missing: iss.missing_data || 0,
-          conflict: iss.conflicts || 0,
-          duplicate: iss.duplicates || 0,
-          outdated: iss.outdated || 0,
-          invalid_unit: (iss.invalid_units || 0) + (iss.invalid_values || 0),
-          wrong_category: iss.wrong_category || 0,
-          compliance: iss.compliance || 0,
-          broken_relationship: iss.broken_relationships || 0,
-          low_confidence: iss.low_confidence || 0
-        });
-      } else {
-        const allRes = await api.getCatalogIssues({ status: statusFilter === 'all' ? undefined : statusFilter, limit: 500 }).catch(() => null);
-        if (allRes && Array.isArray(allRes.items)) {
-          const items = allRes.items;
-          setTabCounts({
-            all: items.length,
-            missing: items.filter(i => i.issue_type === 'missing').length,
-            conflict: items.filter(i => i.issue_type === 'conflict').length,
-            duplicate: items.filter(i => i.issue_type === 'duplicate').length,
-            outdated: items.filter(i => i.issue_type === 'outdated').length,
-            invalid_unit: items.filter(i => i.issue_type === 'invalid_unit' || i.issue_type === 'invalid_value').length,
-            wrong_category: items.filter(i => i.issue_type === 'wrong_category').length,
-            compliance: items.filter(i => i.issue_type === 'compliance').length,
-            broken_relationship: items.filter(i => i.issue_type === 'broken_relationship').length,
-            low_confidence: items.filter(i => i.issue_type === 'low_confidence').length
-          });
-        }
-      }
+      const allRes = await api.getCatalogIssues({ status: statusFilter === 'all' ? undefined : statusFilter, limit: 500 }).catch(() => null);
+      const items = allRes?.items || [];
+
+      const iss = health?.issues || health || {};
+      const missingCount = items.filter(i => i.issue_type === 'missing').length || (iss.missing_data || 0);
+      const conflictCount = items.filter(i => i.issue_type === 'conflict').length || (iss.conflicts || 0);
+      const duplicateCount = items.filter(i => i.issue_type === 'duplicate').length || (iss.duplicates || 0);
+      const outdatedCount = items.filter(i => i.issue_type === 'outdated').length || (iss.outdated || 0);
+      const invalidUnitCount = items.filter(i => i.issue_type === 'invalid_unit' || i.issue_type === 'invalid_value').length || (iss.invalid_units || 0);
+      const wrongCategoryCount = items.filter(i => i.issue_type === 'wrong_category').length || (iss.wrong_category || 0);
+      const complianceCount = items.filter(i => i.issue_type === 'compliance').length || (iss.compliance_issues || iss.compliance || 0);
+      const brokenRelCount = items.filter(i => i.issue_type === 'broken_relationship').length || (iss.broken_relationships || 0);
+      const lowConfCount = items.filter(i => i.issue_type === 'low_confidence').length || (iss.low_confidence || 0);
+
+      setTabCounts({
+        all: items.length || (missingCount + conflictCount + duplicateCount + outdatedCount + invalidUnitCount + wrongCategoryCount + complianceCount + brokenRelCount + lowConfCount),
+        missing: missingCount,
+        conflict: conflictCount,
+        duplicate: duplicateCount,
+        outdated: outdatedCount,
+        invalid_unit: invalidUnitCount,
+        wrong_category: wrongCategoryCount,
+        compliance: complianceCount,
+        broken_relationship: brokenRelCount,
+        low_confidence: lowConfCount
+      });
     } catch (err) {
       console.warn('Failed to load issues from backend:', err);
     } finally {

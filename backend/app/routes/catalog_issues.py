@@ -14,7 +14,7 @@ router = APIRouter(prefix="/catalog-issues", tags=["Catalog Issues"])
 @router.get("", response_model=CatalogIssueListResponse, summary="List catalog issues with filtering and pagination")
 def list_issues(
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=1000),
     issue_type: Optional[str] = Query(None, description="conflict, missing, duplicate, invalid_unit, wrong_category, outdated, compliance, broken_relationship, low_confidence"),
     status: Optional[str] = Query(None, description="open, in_review, resolved, rejected, all"),
     severity: Optional[str] = Query(None),
