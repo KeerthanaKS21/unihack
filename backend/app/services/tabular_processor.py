@@ -15,17 +15,25 @@ class TabularProcessor:
     """
 
     COLUMN_ROLE_PATTERNS = {
-        "sku": [r'(?:part\s*(?:no\.?|num|number)|sku|model(?:\s*no\.?|\s*code)?|item\s*(?:no\.?|code)|catalog\s*no\.?|product\s*code)'],
-        "name": [r'(?:product\s*name|description|item\s*description|title|item\s*name)'],
+        "sku": [r'(?:part\s*(?:no\.?|num|number)|sku|model(?:\s*no\.?|\s*code|\s*identifier)?|item\s*(?:no\.?|code)|catalog\s*no\.?|product\s*code|id)'],
+        "name": [r'(?:product\s*name|description|item\s*description|title|item\s*name|product)'],
         "price": [r'(?:unit\s*price|list\s*price|price(?:\s*\(inr|\s*\(usd|\s*\(eur)?|rate|cost|standard\s*cost)'],
         "currency": [r'(?:currency|curr)'],
         "stock": [r'(?:stock|quantity|qty|inventory|available\s*qty|on\s*hand)'],
         "lead_time": [r'(?:lead\s*time|delivery(?:\s*days|\s*weeks)?|dispatch)'],
         "category": [r'(?:category|family|group|product\s*line|type)'],
-        "power": [r'(?:power|output(?:\s*kw)?|rating(?:\s*kw)?)'],
-        "voltage": [r'(?:voltage|operating\s*voltage|rated\s*voltage)'],
-        "speed": [r'(?:speed|rpm|synchronous\s*speed)'],
-        "ip_rating": [r'(?:protection|enclosure|ip\s*rating|ip\s*code)']
+        "power": [r'(?:power|output(?:\s*kw)?|rated\s*power|max\s*power|rating(?:\s*kw)?)'],
+        "voltage": [r'(?:voltage|operating\s*voltage|rated\s*voltage|input\s*voltage)'],
+        "speed": [r'(?:speed|rpm|synchronous\s*speed|rated\s*speed)'],
+        "current": [r'(?:current|amps|rated\s*current|fla)'],
+        "frequency": [r'(?:frequency|hz|supply\s*frequency)'],
+        "ip_rating": [r'(?:protection|enclosure|ip\s*rating|ip\s*code|nema)'],
+        "flow": [r'(?:flow|flow\s*rate|capacity|cv)'],
+        "pressure": [r'(?:pressure|max\s*pressure|head|bar|psi)'],
+        "torque": [r'(?:torque|rated\s*torque)'],
+        "ratio": [r'(?:ratio|gear\s*ratio)'],
+        "temp": [r'(?:temp|temperature|operating\s*temp|ambient\s*temp)'],
+        "compliance": [r'(?:standard|compliance|atex|rohs|cert|safety)']
     }
 
     @staticmethod
@@ -38,7 +46,7 @@ class TabularProcessor:
             col_lower = str(col).lower().strip()
             for role, patterns in TabularProcessor.COLUMN_ROLE_PATTERNS.items():
                 for pat in patterns:
-                    if re.search(pat, col_lower) and role not in roles.values():
+                    if re.search(pat, col_lower) and col not in roles:
                         roles[col] = role
                         break
         return roles
@@ -64,24 +72,17 @@ class TabularProcessor:
                 sheet_names = excel_file.sheet_names
 
                 for sheet_idx, sheet_name in enumerate(sheet_names):
-                    # Read sheet
                     df = pd.read_excel(excel_file, sheet_name=sheet_name)
-                    
-                    # Clean empty columns / rows
                     df = df.dropna(how='all')
                     df = df.dropna(axis=1, how='all')
 
-                    # Clean headers
                     clean_columns = [str(c).strip() for c in df.columns if not str(c).startswith('Unnamed:')]
                     df = df[clean_columns]
                     
                     row_count = len(df)
                     total_rows += row_count
 
-                    # Detect Roles
                     detected_roles = TabularProcessor._detect_column_roles(clean_columns)
-
-                    # Preview sample rows and preserve all rows
                     sample_records = df.head(30).fillna("").to_dict(orient="records")
                     all_records = df.fillna("").to_dict(orient="records")
 
@@ -95,22 +96,25 @@ class TabularProcessor:
                         "all_rows": all_records
                     })
 
-                    # Text stream for inspection
                     sheet_preview_text = f"=== SHEET {sheet_idx + 1}: {sheet_name} ({row_count} Rows) ===\nColumns: {', '.join(clean_columns)}\n\n"
-                    sample_table_str = df.head(10).to_string(index=False)
+                    sample_table_str = df.head(15).to_string(index=False)
                     sheet_preview_text += sample_table_str + "\n\n"
                     text_stream_parts.append(sheet_preview_text)
 
-                    # Source Citation for Sheet
+                    # Extract row-level attributes into text stream for indexing
+                    for r_idx, row in df.iterrows():
+                        row_items = [f"{col}: {val}" for col, val in row.items() if pd.notna(val) and str(val).strip()]
+                        if row_items:
+                            text_stream_parts.append(f"Row {r_idx + 1} ({sheet_name}): " + " | ".join(row_items))
+
                     source_citations.append({
                         "page": sheet_idx + 1,
                         "attribute": f"Sheet: {sheet_name}",
-                        "snippet": f"Found {row_count} records across columns: {', '.join(clean_columns[:6])}",
+                        "snippet": f"Extracted {row_count} product rows across columns: {', '.join(clean_columns[:6])}",
                         "confidence": 0.99
                     })
 
             elif lower.endswith('.csv'):
-                # Read CSV with encoding detection
                 try:
                     df = pd.read_csv(file_path, encoding='utf-8')
                 except UnicodeDecodeError:
@@ -139,8 +143,13 @@ class TabularProcessor:
                 })
 
                 csv_preview_text = f"=== CSV TABULAR DATA ({row_count} Rows) ===\nColumns: {', '.join(clean_columns)}\n\n"
-                csv_preview_text += df.head(15).to_string(index=False)
+                csv_preview_text += df.head(15).to_string(index=False) + "\n\n"
                 text_stream_parts.append(csv_preview_text)
+
+                for r_idx, row in df.iterrows():
+                    row_items = [f"{col}: {val}" for col, val in row.items() if pd.notna(val) and str(val).strip()]
+                    if row_items:
+                        text_stream_parts.append(f"CSV Row {r_idx + 1}: " + " | ".join(row_items))
 
                 source_citations.append({
                     "page": 1,
@@ -153,7 +162,6 @@ class TabularProcessor:
             logger.error(f"Tabular extraction error: {err}")
             raise err
 
-        # Aggregate Top Structural Attributes
         extracted_attributes["File Type"] = "Excel Workbook (.xlsx/.xls)" if lower.endswith(('.xlsx', '.xls')) else "Comma Separated Values (.csv)"
         extracted_attributes["Total Product Rows"] = f"{total_rows} records"
         extracted_attributes["Total Sheets"] = str(len(sheets_data))
@@ -166,14 +174,15 @@ class TabularProcessor:
             # Discover sample SKUs
             sku_col = next((col for col, role in primary_sheet["detected_roles"].items() if role == "sku"), None)
             if sku_col and primary_sheet["sample_rows"]:
-                sample_skus = [str(r.get(sku_col)) for r in primary_sheet["sample_rows"][:4] if str(r.get(sku_col))]
+                sample_skus = [str(r.get(sku_col)) for r in primary_sheet["sample_rows"][:6] if str(r.get(sku_col))]
                 if sample_skus:
                     extracted_attributes["Sample Product SKUs"] = ", ".join(sample_skus)
 
-            # Discover Price Column
-            price_col = next((col for col, role in primary_sheet["detected_roles"].items() if role == "price"), None)
-            if price_col:
-                extracted_attributes["Pricing Column"] = str(price_col)
+            # Discover Key Spec Columns
+            for col, role in primary_sheet["detected_roles"].items():
+                if role in ["power", "voltage", "speed", "ip_rating", "flow", "pressure", "price"]:
+                    label = f"Column: {role.replace('_', ' ').title()}"
+                    extracted_attributes[label] = str(col)
 
         summary = f"Processed {len(sheets_data)} sheet(s) containing {total_rows} structured product rows with verified header detection."
 
@@ -184,5 +193,5 @@ class TabularProcessor:
             "extracted_summary": summary,
             "extracted_attributes": extracted_attributes,
             "source_citations": source_citations,
-            "extracted_text": "\n\n".join(text_stream_parts)
+            "extracted_text": "\n".join(text_stream_parts)
         }
