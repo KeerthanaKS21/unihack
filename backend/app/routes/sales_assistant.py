@@ -434,8 +434,29 @@ def sales_assistant_chat(req: ChatRequest, db: Session = Depends(get_db)):
                 url="/compatibility"
             ))
         else:
-            answer = "I couldn't verify that information from the available enterprise data."
-            confidence = 0.85
+            # Check uploaded documents table
+            doc = db.query(Document).order_by(Document.id.desc()).first()
+            if doc and doc.extracted_attributes:
+                spec_map = doc.extracted_attributes
+                doc_name = doc.original_file_name or doc.file_name
+                specs_block = "\n".join([f"• **{k.title()}**: {v}" for k, v in spec_map.items()])
+                answer = (
+                    f"### Verified Product Intelligence from Uploaded Datasheet: **{doc_name}**\n\n"
+                    f"**Extracted Technical Specifications:**\n{specs_block}\n\n"
+                    f"Source Document: `{doc_name}`"
+                )
+                sources.append(SourceCitation(
+                    name=doc_name,
+                    docName=doc_name,
+                    page=1,
+                    description=f"{doc_name} Extracted Specifications",
+                    snippet=specs_block,
+                    sourceType="Datasheet",
+                    verified=True
+                ))
+            else:
+                answer = "Information not found in the uploaded company dataset. Please upload the relevant datasheet or catalog document on the Upload page to query this specification."
+                confidence = 1.0
 
     # 4. Procurement & Supplier Sourcing
     elif intent == "PROCUREMENT":
