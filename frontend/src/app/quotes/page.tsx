@@ -79,6 +79,9 @@ export default function QuotesPage() {
   const [productMatch, setProductMatch] = useState<any>(null);
   const [supplierOffer, setSupplierOffer] = useState<any>(null);
   const [alternativeOffers, setAlternativeOffers] = useState<any[]>([]);
+  const [exactMatches, setExactMatches] = useState<any[]>([]);
+  const [excludedProducts, setExcludedProducts] = useState<any[]>([]);
+  const [selectedProductIndex, setSelectedProductIndex] = useState<number>(0);
   const [specEvidence, setSpecEvidence] = useState<SpecEvidenceItem[]>([]);
   const [matchStatus, setMatchStatus] = useState<'Exact Match' | 'Closest Alternative' | 'No Match' | null>(null);
 
@@ -130,6 +133,51 @@ export default function QuotesPage() {
     });
   };
 
+  // Select product from exact matches to generate/update quotation
+  const handleSelectProductForQuote = (p: any, idx: number) => {
+    setSelectedProductIndex(idx);
+    setProductMatch(p);
+
+    const sOffer = {
+      supplierId: p.supplierId,
+      supplierName: p.supplierName,
+      productModel: p.productCode,
+      supplierProductCode: p.supplierCode || p.productCode,
+      priceINR: p.unitPrice,
+      deliveryDays: p.deliveryDays,
+      stockQuantity: p.stockQuantity,
+      rating: 4.8,
+      ipRating: p.specs?.ipRating || p.specs?.iprating || 'IP55',
+      isExactMatch: p.isExactMatch,
+      advantageNotes: `Sourced from uploaded document '${p.sourceDocument}'`,
+      violations: p.failedRequirements || []
+    };
+    setSupplierOffer(sOffer);
+
+    if (parsedSpecs) {
+      const subtotal = parsedSpecs.quantity * p.unitPrice;
+      const tax = subtotal * 0.18;
+      const freight = subtotal > 500000 ? 15000 : 8000;
+      const total = subtotal + tax + freight;
+
+      setQuoteData({
+        quoteNumber: quoteData?.quoteNumber || `Q-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        createdAt: quoteData?.createdAt || new Date().toLocaleString(),
+        validUntil: quoteData?.validUntil || new Date(Date.now() + 30 * 86400000).toLocaleDateString(),
+        subtotal,
+        tax,
+        freight,
+        total
+      });
+    }
+
+    showToast({
+      type: 'success',
+      title: 'Product Selected for Quote',
+      message: `Quotation updated with selected product '${p.name}'.`
+    });
+  };
+
   // Real Sourcing Match logic Grounded on Uploaded Datasheets & Database
   const handleGenerateQuote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,6 +189,9 @@ export default function QuotesPage() {
     setProductMatch(null);
     setSupplierOffer(null);
     setAlternativeOffers([]);
+    setExactMatches([]);
+    setExcludedProducts([]);
+    setSelectedProductIndex(0);
     setSpecEvidence([]);
     setQuoteData(null);
     setValidationResult({ status: 'unchecked', message: '' });
@@ -166,6 +217,8 @@ export default function QuotesPage() {
       setProductMatch(result.productMatch);
       setSupplierOffer(result.supplierOffer);
       setAlternativeOffers(result.alternativeOffers || []);
+      setExactMatches(result.exactMatches || []);
+      setExcludedProducts(result.excludedProducts || []);
       setSpecEvidence(result.specEvidence || []);
       setMatchStatus(result.matchStatus as any);
       setQuoteData(result.quoteData);
@@ -175,7 +228,7 @@ export default function QuotesPage() {
           {
             version: 'v1.0',
             changedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            changeSummary: `Quotation generated for ${result.parsedSpecs.quantity} units grounded on datasheet ${result.productMatch?.source_document || 'engineering record'}.`,
+            changeSummary: `Quotation generated for ${result.parsedSpecs.quantity} units grounded on datasheet ${result.productMatch?.source_document || result.productMatch?.sourceDocument || 'engineering record'}.`,
             user: 'Automated RFQ Sourcing Engine'
           }
         ]);
@@ -699,46 +752,120 @@ export default function QuotesPage() {
                   </div>
                 </div>
 
-                {/* Sourcing Outcomes */}
+                {/* Sourcing Outcomes & Multi-Product Evaluation */}
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider pb-1.5 border-b border-slate-100">
-                    Product Database & Sourcing Outcome
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider pb-1.5 border-b border-slate-100 flex justify-between items-center">
+                    <span>Uploaded Product Evaluation</span>
+                    <span className="text-[10px] text-slate-400 font-mono">Evaluated: {exactMatches.length + excludedProducts.length} Products</span>
                   </h4>
-                  {supplierOffer ? (
-                    <div className="space-y-3 text-xs">
+
+                  {/* EXACT MATCHES */}
+                  {exactMatches.length > 0 ? (
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 text-sm">{productMatch?.name}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${
-                          matchStatus === 'Exact Match'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                          {matchStatus === 'Exact Match' ? '✓ Exact Match' : '⚠ Closest Alternative'}
+                        <span className="text-xs font-bold text-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Exact Matches Found ({exactMatches.length})</span>
+                        </span>
+                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          100% Constraints Met
                         </span>
                       </div>
-                      <div className="space-y-1">
-                        <p className="text-slate-600">Model: <strong className="font-mono text-slate-800">{productMatch?.product_code || productMatch?.model}</strong> • Manufacturer: {productMatch?.manufacturer}</p>
-                        <p className="text-slate-600">Grounded Datasheet: <strong className="font-mono text-blue-700">{productMatch?.source_document || 'Verified OEM Datasheet'}</strong></p>
-                        <p className="text-slate-600">Sourced supplier: <strong>{supplierOffer.supplierName}</strong> ({supplierOffer.supplierProductCode})</p>
-                        <p className="text-slate-600">Contract Rate: <strong className="font-mono text-slate-800">₹{supplierOffer.priceINR.toLocaleString()}</strong> • Warehouse Stock: <strong className="text-emerald-700">{supplierOffer.stockQuantity} units</strong></p>
-                      </div>
 
-                      {/* Display warnings if any specifications do not meet customer requirements */}
-                      {matchStatus === 'Closest Alternative' && supplierOffer.violations && supplierOffer.violations.length > 0 && (
-                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-amber-900 font-medium space-y-0.5 text-[11px]">
-                          <div className="flex items-center gap-1 font-bold">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                            <span>Specification deviations detected:</span>
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {exactMatches.map((em, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-xl border transition-all text-xs space-y-2 ${
+                              selectedProductIndex === idx
+                                ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400'
+                                : 'bg-white border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h5 className="font-bold text-slate-900 text-xs">{em.name}</h5>
+                                <p className="text-[10px] text-slate-500 font-mono">
+                                  Model: {em.productCode} • Supplier: {em.supplierName}
+                                </p>
+                                <p className="text-[10px] text-blue-700 font-mono font-medium mt-0.5">
+                                  Source: {em.sourceDocument}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectProductForQuote(em, idx)}
+                                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors shrink-0 ${
+                                  selectedProductIndex === idx
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {selectedProductIndex === idx ? '✓ Selected' : 'Select for Quote'}
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 text-[10px] bg-white/80 p-2 rounded border border-slate-100 font-mono">
+                              <div>
+                                <span className="text-slate-400 block">Unit Price:</span>
+                                <span className="font-bold text-slate-800">₹{em.unitPrice.toLocaleString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block">Lead Time:</span>
+                                <span className="font-bold text-slate-800">{em.deliveryDays} Days</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block">Stock:</span>
+                                <span className="font-bold text-emerald-700">{em.stockQuantity} Units</span>
+                              </div>
+                            </div>
                           </div>
-                          {supplierOffer.violations.map((v: string, vidx: number) => (
-                            <p key={vidx} className="pl-4 font-mono">• {v}</p>
-                          ))}
-                        </div>
-                      )}
+                        ))}
+                      </div>
                     </div>
                   ) : (
-                    <div className="p-4 bg-slate-50 text-slate-400 text-center text-xs border border-dashed rounded-lg">
-                      Data unavailable in verified project datasets.
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1 text-xs">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        <span>No exact match found.</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800 leading-relaxed">
+                        Zero products in the uploaded dataset satisfied 100% of your constraints. Review excluded products and failed requirements below.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* EXCLUDED PRODUCTS WITH FAILED REQUIREMENT REASONS */}
+                  {excludedProducts.length > 0 && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                          <X className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Products Excluded from Exact Match ({excludedProducts.length})</span>
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {excludedProducts.map((ex, exIdx) => (
+                          <div key={exIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className="font-bold text-slate-800">{ex.name}</span>
+                                <span className="text-[10px] text-slate-500 font-mono ml-2">({ex.productCode})</span>
+                              </div>
+                              <span className="text-[9px] text-blue-600 font-mono">Source: {ex.sourceDocument}</span>
+                            </div>
+
+                            <div className="space-y-0.5 pt-0.5">
+                              {ex.failedRequirements && ex.failedRequirements.map((f: string, fIdx: number) => (
+                                <p key={fIdx} className="text-[10px] text-rose-700 font-mono flex items-center gap-1">
+                                  <span>{f}</span>
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

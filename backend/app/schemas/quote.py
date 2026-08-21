@@ -110,6 +110,9 @@ class QuoteMatchResult(BaseModel):
     productMatch: Optional[Dict[str, Any]] = None
     supplierOffer: Optional[SupplierOfferDetail] = None
     alternativeOffers: List[SupplierOfferDetail] = []
+    exactMatches: List[Dict[str, Any]] = []
+    excludedProducts: List[Dict[str, Any]] = []
+    totalProductsEvaluated: int = 0
     specEvidence: List[SpecificationEvidence] = []
     matchStatus: str # "Exact Match" | "Closest Alternative" | "No Match"
     quoteData: Optional[Dict[str, Any]] = None

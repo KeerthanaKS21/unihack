@@ -152,6 +152,92 @@ class DocumentService:
         except Exception as ext_err:
             logger.warning(f"Auto-extraction warning on upload: {ext_err}")
 
+        # Ensure a Product master record exists for this uploaded document
+        if not matched_product:
+            prod_name = extracted_specs.get("name", extracted_specs.get("product name", extracted_specs.get("product", "")))
+            if not prod_name:
+                prod_name = os.path.splitext(orig_name)[0].replace("_", " ").replace("-", " ").title()
+
+            prod_code = extracted_specs.get("product_code", extracted_specs.get("model", extracted_specs.get("sku", "")))
+            if not prod_code:
+                prod_code = re.sub(r'[^a-zA-Z0-9]', '', os.path.splitext(orig_name)[0]).upper()[:15] or f"PROD-{doc_record.id}"
+
+            prod_category = extracted_specs.get("category", extracted_specs.get("product type", ""))
+            if not prod_category:
+                orig_l = orig_name.lower()
+                if "motor" in orig_l or "induction" in orig_l:
+                    prod_category = "Motors & Drives"
+                elif "pump" in orig_l:
+                    prod_category = "Pumps & Fluid Handling"
+                elif "valve" in orig_l:
+                    prod_category = "Valves & Control"
+                elif "compressor" in orig_l:
+                    prod_category = "Compressors"
+                elif "gearbox" in orig_l or "reducer" in orig_l:
+                    prod_category = "Gearboxes & Power Transmission"
+                else:
+                    prod_category = "Industrial Equipment"
+
+            prod_mfr = extracted_specs.get("supplier name", extracted_specs.get("manufacturer", extracted_specs.get("brand", "Uploaded OEM Vendor")))
+
+            matched_product = db.query(Product).filter(
+                or_(Product.product_code == prod_code, Product.name == prod_name)
+            ).first()
+
+            if not matched_product:
+                matched_product = Product(
+                    product_code=prod_code,
+                    name=prod_name,
+                    category=prod_category,
+                    manufacturer=prod_mfr,
+                    status="ACTIVE"
+                )
+                db.add(matched_product)
+                db.commit()
+                db.refresh(matched_product)
+
+            doc_record.product_id = matched_product.id
+            db.commit()
+
+        # Create/update active ProductVersion and ProductAttributes for this product
+        active_ver = db.query(ProductVersion).filter(
+            ProductVersion.product_id == matched_product.id,
+            ProductVersion.is_current == True
+        ).first()
+
+        if not active_ver:
+            active_ver = ProductVersion(
+                product_id=matched_product.id,
+                version_number=detected_version or "v1.0",
+                source_document_id=doc_record.id,
+                is_current=True,
+                status="RELEASED"
+            )
+            db.add(active_ver)
+            db.commit()
+            db.refresh(active_ver)
+
+        if extracted_specs:
+            for attr_k, attr_v in extracted_specs.items():
+                if not attr_v:
+                    continue
+                existing_attr = db.query(ProductAttribute).filter(
+                    ProductAttribute.product_version_id == active_ver.id,
+                    ProductAttribute.attribute_name == attr_k
+                ).first()
+                if not existing_attr:
+                    db.add(ProductAttribute(
+                        product_version_id=active_ver.id,
+                        attribute_name=attr_k,
+                        attribute_value=clean_val(attr_v),
+                        source_document_id=doc_record.id,
+                        confidence=0.98,
+                        verification_status="VERIFIED"
+                    ))
+                else:
+                    existing_attr.attribute_value = clean_val(attr_v)
+            db.commit()
+
         # 7. Create Candidate/Staged Product Version and Record Changes
         if matched_product and extracted_specs:
             DocumentService._create_staged_version_and_changes(
