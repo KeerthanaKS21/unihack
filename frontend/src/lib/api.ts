@@ -355,6 +355,17 @@ export const api = {
       body: JSON.stringify({ website_url: websiteUrl, product_code: productCode }),
     }),
 
+  promoteVerifiedVersion: (data: {
+    productId: string | number;
+    newVersion: string | number;
+    updates?: Record<string, any>;
+    approvedBy?: string;
+  }) =>
+    request<any>('/ecommerce/promote-verified-version', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   pushEcommerceUpdate: (data: {
     api_endpoint: string;
     product_code: string;
