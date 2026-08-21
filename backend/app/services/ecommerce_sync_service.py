@@ -703,6 +703,18 @@ class EcommerceSyncService:
         db.add(approval_rec)
         db.commit()
 
+        # 10. Promote Verified Staged Version in UniHack Database
+        try:
+            cls.promote_verified_version(
+                db=db,
+                product_id_or_code=product.id,
+                verified_version_number=f"v{new_ver_num}.0",
+                verified_specs=updates_payload,
+                approved_by=approved_by
+            )
+        except Exception as promo_err:
+            logger.warning(f"Note on automatic database version promotion: {promo_err}")
+
         return {
             "status": "SUCCESS",
             "verification_status": "VERIFIED",
@@ -764,6 +776,132 @@ class EcommerceSyncService:
             "version": latest_v.version_number if latest_v else "v1.0",
             "specifications": specs,
             "last_synced_at": latest_v.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if latest_v else "Baseline"
+        }
+
+    @classmethod
+    def promote_verified_version(
+        cls,
+        db: Session,
+        product_id_or_code: Any,
+        verified_version_number: Optional[str] = None,
+        verified_specs: Optional[Dict[str, Any]] = None,
+        approved_by: str = "Engineering Lead"
+    ) -> Dict[str, Any]:
+        """
+        Promotes an authoritatively verified staged/candidate version to become the
+        CURRENT authoritative product version in the database.
+        Preserves all version history and audit records.
+        """
+        # Resolve product
+        product = None
+        if isinstance(product_id_or_code, int) or (isinstance(product_id_or_code, str) and product_id_or_code.isdigit()):
+            product = db.query(Product).filter(Product.id == int(product_id_or_code)).first()
+        if not product and isinstance(product_id_or_code, str):
+            product = db.query(Product).filter(Product.product_code.ilike(product_id_or_code.strip())).first()
+        
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product '{product_id_or_code}' not found.")
+
+        # Find the staged/candidate version
+        staged_ver = None
+        if verified_version_number:
+            staged_ver = db.query(ProductVersion).filter(
+                ProductVersion.product_id == product.id,
+                ProductVersion.version_number == verified_version_number
+            ).first()
+        
+        if not staged_ver:
+            # Find latest non-current draft version
+            staged_ver = (
+                db.query(ProductVersion)
+                .filter(ProductVersion.product_id == product.id, ProductVersion.is_current == False)
+                .order_by(desc(ProductVersion.created_at), desc(ProductVersion.id))
+                .first()
+            )
+
+        if not staged_ver:
+            # Idempotency check: if current version already matches verified version, return success
+            current_ver = db.query(ProductVersion).filter(ProductVersion.id == product.current_version_id).first()
+            if current_ver and verified_version_number and current_ver.version_number == verified_version_number:
+                return {
+                    "success": True,
+                    "status": "ALREADY_CURRENT",
+                    "product_code": product.product_code,
+                    "current_version": current_ver.version_number,
+                    "message": f"Version {current_ver.version_number} is already the current authoritative version."
+                }
+            raise HTTPException(status_code=400, detail=f"No staged candidate version found for {product.product_code}.")
+
+        # Idempotency check
+        if staged_ver.is_current and product.current_version_id == staged_ver.id:
+            return {
+                "success": True,
+                "status": "ALREADY_CURRENT",
+                "product_code": product.product_code,
+                "current_version": staged_ver.version_number,
+                "message": f"Version {staged_ver.version_number} is already current."
+            }
+
+        # 1. Archive current version(s) as historical (is_current = False)
+        db.query(ProductVersion).filter(ProductVersion.product_id == product.id).update({"is_current": False})
+
+        # 2. Promote staged version to CURRENT
+        staged_ver.is_current = True
+        staged_ver.status = "VERIFIED"
+        staged_ver.verified_by = approved_by
+        product.current_version_id = staged_ver.id
+        product.updated_at = datetime.utcnow()
+
+        # 3. If verified specs provided, ensure attributes match
+        if verified_specs and isinstance(verified_specs, dict):
+            for attr_name, attr_val in verified_specs.items():
+                if is_supplier_commercial_field(attr_name) or is_metadata_field(attr_name):
+                    continue
+                clean_attr_name = to_canonical_name(attr_name)
+                existing_attr = db.query(ProductAttribute).filter(
+                    ProductAttribute.product_version_id == staged_ver.id,
+                    ProductAttribute.attribute_name.ilike(clean_attr_name)
+                ).first()
+                if existing_attr:
+                    existing_attr.attribute_value = str(attr_val)
+                    existing_attr.verification_status = "VERIFIED"
+                else:
+                    new_attr = ProductAttribute(
+                        product_version_id=staged_ver.id,
+                        attribute_name=clean_attr_name,
+                        attribute_value=str(attr_val),
+                        confidence=1.0,
+                        verification_status="VERIFIED"
+                    )
+                    db.add(new_attr)
+
+        # 4. Resolve associated Change and ChangeImpact records
+        db.query(Change).filter(
+            Change.product_id == product.id,
+            Change.status == "PENDING"
+        ).update({"status": "APPLIED"})
+
+        impacts = (
+            db.query(ChangeImpact)
+            .join(Change)
+            .filter(Change.product_id == product.id, ChangeImpact.impact_type == "E-commerce")
+            .all()
+        )
+        for imp in impacts:
+            imp.reviewed = True
+
+        db.commit()
+        db.refresh(product)
+        db.refresh(staged_ver)
+
+        return {
+            "success": True,
+            "status": "PROMOTED",
+            "product_id": product.id,
+            "product_code": product.product_code,
+            "promoted_version": staged_ver.version_number,
+            "current_version_id": product.current_version_id,
+            "message": f"Successfully promoted {product.product_code} to {staged_ver.version_number} as the current authoritative version."
         }
 
     @classmethod

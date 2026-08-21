@@ -232,3 +232,27 @@ def sync_ecommerce(
             "changedFields": list(updates_dict.keys()),
             "message": f"Updated catalog for {product.product_code}."
         }
+
+
+@router.post("/promote-verified-version", summary="Promote an authoritatively verified staged product version to current authoritative database state")
+def promote_verified_version(
+    payload: Dict[str, Any] = Body(..., description="Promotion payload containing product_code/product_id and verified version"),
+    db: Session = Depends(get_db)
+):
+    product_id_or_code = payload.get("productId") or payload.get("product_code") or payload.get("product_id")
+    verified_version = payload.get("newVersion") or payload.get("verifiedVersion") or payload.get("version")
+    if isinstance(verified_version, int):
+        verified_version = f"v{verified_version}.0"
+    elif isinstance(verified_version, str) and not verified_version.startswith("v") and verified_version.replace(".", "").isdigit():
+        verified_version = f"v{verified_version}" if "." in verified_version else f"v{verified_version}.0"
+
+    verified_specs = payload.get("updates") or payload.get("verifiedSpecs") or payload.get("specs")
+    approved_by = payload.get("approvedBy") or payload.get("approval", {}).get("approvedBy") or "Engineering Lead"
+
+    return EcommerceSyncService.promote_verified_version(
+        db=db,
+        product_id_or_code=product_id_or_code,
+        verified_version_number=verified_version,
+        verified_specs=verified_specs,
+        approved_by=approved_by
+    )
