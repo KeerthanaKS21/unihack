@@ -106,7 +106,7 @@ Output MUST follow this exact JSON schema:
         """Call OpenAI API with JSON schema enforcement."""
         import openai
 
-        client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+        client = openai.OpenAI(api_key=settings.OPENAI_API_KEY, max_retries=0, timeout=5.0)
         
         context_payload = {
             "document_id": document_id,
@@ -368,6 +368,16 @@ Output MUST follow this exact JSON schema:
                     source_meta["source_type"] = "OCR"
                 elif lower_fname.endswith((".pdf", ".docx")):
                     source_meta["source_type"] = "Document Text"
+
+                specifications.append(ProductSpecificationItem(
+                    attribute_name=attr_key,
+                    value=parsed_val,
+                    unit=parsed_unit,
+                    raw_value=raw_val,
+                    source_text=source_snippet or f"{label}: {raw_val}",
+                    model_confidence=0.98,
+                    source=source_meta
+                ))
 
         # 3. Fallback: Include all remaining key-value attributes from attrs dictionary
         for k, v in attrs.items():

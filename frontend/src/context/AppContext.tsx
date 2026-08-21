@@ -182,6 +182,9 @@ interface AppContextType {
   toasts: ToastNotification[];
   showToast: (toast: Omit<ToastNotification, 'id'>) => void;
   dismissToast: (id: string) => void;
+
+  // Real-time Sidebar & Metrics Synchronization
+  refreshBackendData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -242,115 +245,125 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [unreviewedImpactsCount, syncStatus]);
 
-  // Load initial backend data asynchronously if API is reachable
-  useEffect(() => {
-    const loadBackendData = async () => {
-      try {
-        // Load dynamic products from DB
-        const productsRes = await api.getProducts({ limit: 100 }).catch(() => null);
-        if (productsRes && Array.isArray(productsRes.items)) {
-          const adaptedProducts = productsRes.items.map(adaptProduct);
-          setProducts(adaptedProducts);
-          setActiveProduct(adaptedProducts.length > 0 ? adaptedProducts[0] : null);
-        } else {
-          setProducts([]);
-          setActiveProduct(null);
-        }
-
-        // 1. Catalog Health
-        const health = await api.getCatalogHealth().catch(() => null);
-        if (health) {
-          setCatalogHealth(prev => ({
-            ...prev,
-            overallHealthScore: health.overall_health || prev.overallHealthScore,
-            totalProducts: health.total_products || prev.totalProducts,
-            completeProducts: health.complete_products || prev.completeProducts,
-            conflictsCount: health.conflicts || prev.conflictsCount,
-            missingDataCount: health.missing_data || prev.missingDataCount,
-            duplicatesCount: health.duplicates || prev.duplicatesCount,
-            outdatedProductsCount: health.outdated || prev.outdatedProductsCount,
-            complianceIssuesCount: health.compliance_issues || prev.complianceIssuesCount,
-          }));
-        }
-
-        // 2. Change Impacts from DB
-        const impacts = await api.getChangeImpacts().catch(() => null);
-        if (impacts && Array.isArray(impacts)) {
-          setChangeImpacts(impacts.map((i: any) => ({
-            id: `imp-${i.id}`,
-            productId: `prod-${i.product_id || 'vtx-550'}`,
-            productName: i.product_name || 'Industrial Equipment',
-            changeDescription: i.change_description || '',
-            domain: (i.domain || i.impact_type || 'Operations') as any,
-            title: i.title,
-            explanation: i.description,
-            contextEvidence: i.context_evidence || 'Traceable from uploaded engineering revision.',
-            severity: (i.severity || 'medium') as any,
-            reviewed: Boolean(i.reviewed),
-            reviewedAt: i.reviewed_at ? new Date(i.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-            reviewedBy: i.reviewed_by,
-            targetModuleUrl: i.target_module_url || '/compatibility'
-          })));
-        }
-
-        // 2b. Changes from DB
-        const changes = await api.getChanges().catch(() => null);
-        if (changes && Array.isArray(changes)) {
-          setProductChanges(changes.map((c: any) => ({
-            id: `chg-${c.id}`,
-            productId: `prod-${c.product_id}`,
-            productName: c.product_name,
-            attribute: c.attribute_name,
-            oldValue: c.old_value || '-',
-            newValue: c.new_value,
-            detectedAt: c.detected_at || 'Just now',
-            sourceDocument: c.source_document || 'Uploaded document',
-            confidence: c.confidence || 0.98,
-            status: (c.status || 'pending').toLowerCase() as any
-          })));
-        }
-
-        // 3. Catalog Issues from DB
-        const issuesRes = await api.getCatalogIssues({ limit: 100 }).catch(() => null);
-        if (issuesRes && Array.isArray(issuesRes.items)) {
-          setCatalogIssues(issuesRes.items.map((dbIss: any) => ({
-            id: String(dbIss.id),
-            productId: String(dbIss.product_id),
-            productName: dbIss.product_name || 'Product Record',
-            productModel: dbIss.product_model || 'SKU',
-            issueType: dbIss.issue_type,
-            field: dbIss.field,
-            title: dbIss.title,
-            description: dbIss.description,
-            severity: dbIss.severity || 'medium',
-            status: (dbIss.status || 'open').toLowerCase() as any,
-            evidence: dbIss.evidence,
-            aiRecommendation: dbIss.ai_recommendation,
-            resolvedValue: dbIss.resolution_value,
-            resolvedAt: dbIss.resolved_at,
-            resolvedBy: dbIss.resolved_by
-          })));
-        }
-
-        // 4. Quotations from DB
-        const quotes = await api.getQuotes().catch(() => null);
-        if (quotes && Array.isArray(quotes) && quotes.length > 0) {
-          const firstDbQuote = quotes[0];
-          if (firstDbQuote) {
-            setActiveQuote(prev => (prev ? {
-              ...prev,
-              quoteNumber: firstDbQuote.quote_number || prev.quoteNumber,
-              version: firstDbQuote.version || prev.version,
-              status: firstDbQuote.status || prev.status,
-            } : null));
-          }
-        }
-      } catch (err) {
-        console.warn('Backend API hydration warning (using resilient defaults):', err);
+  // Refresh backend data asynchronously to sync sidebar & state metrics
+  const refreshBackendData = React.useCallback(async () => {
+    try {
+      // Load dynamic products from DB
+      const productsRes = await api.getProducts({ limit: 100 }).catch(() => null);
+      if (productsRes && Array.isArray(productsRes.items)) {
+        const adaptedProducts = productsRes.items.map(adaptProduct);
+        setProducts(adaptedProducts);
+        setActiveProduct(prev => {
+          if (!prev) return adaptedProducts.length > 0 ? adaptedProducts[0] : null;
+          const found = adaptedProducts.find(p => p.id === prev.id);
+          return found || (adaptedProducts.length > 0 ? adaptedProducts[0] : null);
+        });
+      } else {
+        setProducts([]);
+        setActiveProduct(null);
       }
-    };
-    loadBackendData();
+
+      // 1. Catalog Health
+      const health = await api.getCatalogHealth().catch(() => null);
+      if (health) {
+        setCatalogHealth(prev => ({
+          ...prev,
+          overallHealthScore: health.overall_health || prev.overallHealthScore,
+          totalProducts: health.total_products || prev.totalProducts,
+          completeProducts: health.complete_products || prev.completeProducts,
+          conflictsCount: health.conflicts || prev.conflictsCount,
+          missingDataCount: health.missing_data || prev.missingDataCount,
+          duplicatesCount: health.duplicates || prev.duplicatesCount,
+          outdatedProductsCount: health.outdated || prev.outdatedProductsCount,
+          complianceIssuesCount: health.compliance_issues || prev.complianceIssuesCount,
+        }));
+      }
+
+      // 2. Change Impacts from DB
+      const impacts = await api.getChangeImpacts().catch(() => null);
+      if (impacts && Array.isArray(impacts)) {
+        setChangeImpacts(impacts.map((i: any) => ({
+          id: `imp-${i.id}`,
+          productId: `prod-${i.product_id || 'vtx-550'}`,
+          productName: i.product_name || 'Industrial Equipment',
+          changeDescription: i.change_description || '',
+          domain: (i.domain || i.impact_type || 'Operations') as any,
+          title: i.title,
+          explanation: i.description,
+          contextEvidence: i.context_evidence || 'Traceable from uploaded engineering revision.',
+          severity: (i.severity || 'medium') as any,
+          reviewed: Boolean(i.reviewed),
+          reviewedAt: i.reviewed_at ? new Date(i.reviewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+          reviewedBy: i.reviewed_by,
+          targetModuleUrl: i.target_module_url || '/compatibility'
+        })));
+      }
+
+      // 2b. Changes from DB
+      const changes = await api.getChanges().catch(() => null);
+      if (changes && Array.isArray(changes)) {
+        setProductChanges(changes.map((c: any) => ({
+          id: `chg-${c.id}`,
+          productId: `prod-${c.product_id}`,
+          productName: c.product_name,
+          attribute: c.attribute_name,
+          oldValue: c.old_value || '-',
+          newValue: c.new_value,
+          detectedAt: c.detected_at || 'Just now',
+          sourceDocument: c.source_document || 'Uploaded document',
+          confidence: c.confidence || 0.98,
+          status: (c.status || 'pending').toLowerCase() as any
+        })));
+      }
+
+      // 3. Catalog Issues from DB (limit: 1000 for full coverage)
+      const issuesRes = await api.getCatalogIssues({ limit: 1000 }).catch(() => null);
+      if (issuesRes && Array.isArray(issuesRes.items)) {
+        setCatalogIssues(issuesRes.items.map((dbIss: any) => ({
+          id: String(dbIss.id),
+          productId: String(dbIss.product_id),
+          productName: dbIss.product_name || 'Product Record',
+          productModel: dbIss.product_model || 'SKU',
+          issueType: dbIss.issue_type,
+          field: dbIss.field,
+          title: dbIss.title,
+          description: dbIss.description,
+          severity: dbIss.severity || 'medium',
+          status: (dbIss.status || 'open').toLowerCase() as any,
+          evidence: dbIss.evidence,
+          aiRecommendation: dbIss.ai_recommendation,
+          resolvedValue: dbIss.resolution_value,
+          resolvedAt: dbIss.resolved_at,
+          resolvedBy: dbIss.resolved_by
+        })));
+      }
+
+      // 4. Quotations from DB
+      const quotes = await api.getQuotes().catch(() => null);
+      if (quotes && Array.isArray(quotes) && quotes.length > 0) {
+        const firstDbQuote = quotes[0];
+        if (firstDbQuote) {
+          setActiveQuote(prev => (prev ? {
+            ...prev,
+            quoteNumber: firstDbQuote.quote_number || prev.quoteNumber,
+            version: firstDbQuote.version || prev.version,
+            status: firstDbQuote.status || prev.status,
+          } : null));
+        }
+      }
+    } catch (err) {
+      console.warn('Backend API hydration warning:', err);
+    }
   }, []);
+
+  // Poll backend every 3 seconds so sidebar badges & metrics are always live
+  useEffect(() => {
+    refreshBackendData();
+    const intervalId = setInterval(() => {
+      refreshBackendData();
+    }, 3000);
+    return () => clearInterval(intervalId);
+  }, [refreshBackendData]);
 
   // Load dynamic data dependent on activeProduct
   useEffect(() => {
@@ -1175,7 +1188,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGlobalSearchOpen,
         toasts,
         showToast,
-        dismissToast
+        dismissToast,
+        refreshBackendData
       }}
     >
       {children}

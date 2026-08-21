@@ -37,7 +37,7 @@ function CatalogIssuesContent() {
   const searchParams = useSearchParams();
   const initialFilter = searchParams.get('filter') || 'all';
 
-  const { showToast } = useApp();
+  const { showToast, refreshBackendData } = useApp();
 
   const [activeTab, setActiveTab] = useState<string>(initialFilter);
   const [statusFilter, setStatusFilter] = useState<string>('open');
@@ -138,6 +138,7 @@ function CatalogIssuesContent() {
       });
       setEditingIssueId(null);
       await fetchIssues();
+      await refreshBackendData();
     } catch (err: any) {
       showToast({
         type: 'error',

@@ -14,11 +14,12 @@ from app.db.models.product import Product, ProductVersion, ProductAttribute
 from app.db.models.change import Change, ChangeImpact
 from app.db.models.certificate import Certificate
 from app.utils.file_storage import save_uploaded_file
-from app.schemas.document import DocumentUploadResponse, DocumentResponse
+from app.schemas.document import DocumentUploadResponse, DocumentResponse, ProductExtractionResponse
 
 from app.services.pdf_processor import PDFProcessor
 from app.services.docx_processor import DocxProcessor
 from app.services.image_processor import ImageProcessor
+from app.services.tabular_processor import TabularProcessor
 from app.services.product_extraction_service import ProductExtractionService
 from app.services.product_identification_service import ProductIdentificationService
 from app.services.version_detection_service import VersionDetectionService
@@ -65,51 +66,15 @@ class DocumentService:
         detected_version: Optional[str] = None
         summary_text = f"Ingested {orig_name} with verified processing."
 
-        # 1. Process CSV / Spreadsheets
-        if (orig_lower.endswith(".csv") or orig_lower.endswith(".xlsx") or orig_lower.endswith(".xls")) and os.path.exists(file_path):
-            if orig_lower.endswith(".csv"):
-                try:
-                    with open(file_path, "r", encoding="utf-8-sig", errors="ignore") as f:
-                        reader = csv.DictReader(f)
-                        rows = list(reader)
-                        if rows:
-                            first_row = rows[0]
-                            # Clean keys (handling BOM)
-                            cleaned_row = {clean_key(k): clean_val(v) for k, v in first_row.items() if k}
-                            row_id = cleaned_row.get("ID") or cleaned_row.get("Product ID") or cleaned_row.get("Model") or ""
-                            ver_val = cleaned_row.get("Version") or "2"
-                            detected_version = f"v{ver_val}.0" if "." not in ver_val else f"v{ver_val}"
-
-                            for k, v in cleaned_row.items():
-                                if v and k.lower() not in NON_SPEC_FIELDS:
-                                    extracted_specs[k] = v
-
-                            # Match product
-                            if row_id:
-                                matched_product = db.query(Product).filter(
-                                    or_(
-                                        Product.product_code.ilike(row_id),
-                                        Product.name.ilike(row_id)
-                                    )
-                                ).first()
-                                if not matched_product:
-                                    prod_name = cleaned_row.get("Name") or row_id
-                                    prod_cat = cleaned_row.get("Category") or "Industrial Equipment"
-                                    matched_product = Product(
-                                        product_code=row_id,
-                                        name=prod_name,
-                                        category=prod_cat,
-                                        manufacturer="InduCore",
-                                        status="ACTIVE",
-                                        health_score=95
-                                    )
-                                    db.add(matched_product)
-                                    db.commit()
-                                    db.refresh(matched_product)
-
-                            summary_text = f"Parsed {len(extracted_specs)} technical attributes from {orig_name} for {row_id} (Version {detected_version})."
-                except Exception as csv_err:
-                    logger.warning(f"CSV extraction error: {csv_err}")
+        # 1. Process CSV / Spreadsheets (.xlsx, .xls, .csv) with TabularProcessor
+        if orig_lower.endswith((".csv", ".xlsx", ".xls")) and os.path.exists(file_path):
+            try:
+                tab_res = TabularProcessor.extract_tabular_content(file_path, orig_name)
+                if tab_res and tab_res.get("extracted_attributes"):
+                    extracted_specs = tab_res["extracted_attributes"]
+                    summary_text = tab_res.get("extracted_summary") or summary_text
+            except Exception as tab_err:
+                logger.warning(f"Tabular extraction error: {tab_err}")
 
         # 2. Process PDF files
         elif orig_lower.endswith(".pdf") and os.path.exists(file_path):
@@ -122,14 +87,24 @@ class DocumentService:
                 logger.warning(f"PDF extraction error: {pdf_err}")
 
         # 3. Process DOCX files
-        elif (orig_lower.endswith(".docx") or orig_lower.endswith(".doc")) and os.path.exists(file_path):
+        elif orig_lower.endswith((".docx", ".doc")) and os.path.exists(file_path):
             try:
-                docx_res = DocxProcessor.process_docx(file_path)
+                docx_res = DocxProcessor.extract_docx_content(file_path, orig_name)
                 if docx_res and docx_res.get("extracted_attributes"):
                     extracted_specs = docx_res["extracted_attributes"]
                     summary_text = docx_res.get("extracted_summary") or summary_text
             except Exception as docx_err:
                 logger.warning(f"DOCX extraction error: {docx_err}")
+
+        # 4. Process Image files (PNG, JPG, JPEG, WEBP)
+        elif orig_lower.endswith((".png", ".jpg", ".jpeg", ".webp")) and os.path.exists(file_path):
+            try:
+                img_res = ImageProcessor.extract_image_content(file_path, orig_name)
+                if img_res and img_res.get("extracted_attributes"):
+                    extracted_specs = img_res["extracted_attributes"]
+                    summary_text = img_res.get("extracted_summary") or summary_text
+            except Exception as img_err:
+                logger.warning(f"Image extraction error: {img_err}")
 
         # 4. Fallback product matching if not resolved
         if not matched_product:
@@ -170,7 +145,14 @@ class DocumentService:
         db.commit()
         db.refresh(doc_record)
 
-        # 6. Create Candidate/Staged Product Version and Record Changes
+        # 6. Extract Product Intelligence & Auto-run detection pipeline
+        try:
+            DocumentService.extract_product_intelligence(db, doc_record.id)
+            db.refresh(doc_record)
+        except Exception as ext_err:
+            logger.warning(f"Auto-extraction warning on upload: {ext_err}")
+
+        # 7. Create Candidate/Staged Product Version and Record Changes
         if matched_product and extracted_specs:
             DocumentService._create_staged_version_and_changes(
                 db=db,
@@ -193,7 +175,9 @@ class DocumentService:
             match_confidence=doc_record.match_confidence,
             is_same_product_detected=bool(matched_product),
             uploaded_at=doc_record.uploaded_at,
-            message="Document uploaded, stored, and staged successfully"
+            message="Document uploaded, stored, and extracted successfully",
+            extracted_attributes=doc_record.extracted_attributes or {},
+            extracted_product_data=doc_record.extracted_product_data
         )
 
     @staticmethod
@@ -347,6 +331,50 @@ class DocumentService:
         offset = (page - 1) * limit
         items = query.order_by(desc(Document.created_at)).offset(offset).limit(limit).all()
         return items, total
+
+    @staticmethod
+    def extract_product_intelligence(db: Session, document_id: int) -> ProductExtractionResponse:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Document ID {document_id} not found")
+
+        res = ProductExtractionService.extract_product_intelligence(
+            document_id=doc.id,
+            file_name=doc.original_file_name or doc.file_name,
+            extracted_text=doc.extracted_text,
+            extracted_attributes=doc.extracted_attributes or {},
+            source_citations=doc.source_citations or []
+        )
+
+        try:
+            if hasattr(res, "model_dump_json"):
+                doc.extracted_product_data = json.loads(res.model_dump_json())
+            elif hasattr(res, "model_dump"):
+                doc.extracted_product_data = json.loads(json.dumps(res.model_dump(mode="json"), default=str))
+            else:
+                doc.extracted_product_data = json.loads(json.dumps(res, default=str))
+        except Exception as e:
+            logger.warning(f"Error serializing extracted product data for doc {document_id}: {e}")
+        doc.processing_status = "PROCESSED"
+        db.commit()
+        db.refresh(doc)
+        return res
+
+    @staticmethod
+    def link_product_manually(db: Session, document_id: int, product_id: int) -> Document:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Document ID {document_id} not found")
+        prod = db.query(Product).filter(Product.id == product_id).first()
+        if not prod:
+            raise HTTPException(status_code=404, detail=f"Product ID {product_id} not found")
+
+        doc.product_id = prod.id
+        doc.product_model = prod.product_code
+        doc.is_ambiguous = False
+        db.commit()
+        db.refresh(doc)
+        return doc
 
     @staticmethod
     def get_document_by_id(db: Session, doc_id: int) -> Document:

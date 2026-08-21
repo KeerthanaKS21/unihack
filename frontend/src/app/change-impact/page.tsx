@@ -25,7 +25,7 @@ import {
 import Link from 'next/link';
 
 export default function ChangeImpactPage() {
-  const { showToast } = useApp();
+  const { showToast, refreshBackendData } = useApp();
 
   const [loading, setLoading] = useState(true);
   const [impacts, setImpacts] = useState<any[]>([]);
@@ -55,6 +55,7 @@ export default function ChangeImpactPage() {
     try {
       await api.reviewChangeImpact(impactId, nextState);
       setImpacts(prev => prev.map(imp => imp.id === impactId ? { ...imp, reviewed: nextState } : imp));
+      await refreshBackendData();
       showToast({
         type: 'info',
         title: nextState ? 'Impact Reviewed' : 'Review Reset',
@@ -73,6 +74,7 @@ export default function ChangeImpactPage() {
     try {
       await Promise.all(impacts.filter(i => !i.reviewed).map(i => api.reviewChangeImpact(i.id, true)));
       setImpacts(prev => prev.map(imp => ({ ...imp, reviewed: true })));
+      await refreshBackendData();
       showToast({
         type: 'success',
         title: 'All Impacts Acknowledged',

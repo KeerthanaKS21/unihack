@@ -102,10 +102,31 @@ class TabularProcessor:
                     text_stream_parts.append(sheet_preview_text)
 
                     # Extract row-level attributes into text stream for indexing
-                    for r_idx, row in df.iterrows():
-                        row_items = [f"{col}: {val}" for col, val in row.items() if pd.notna(val) and str(val).strip()]
-                        if row_items:
-                            text_stream_parts.append(f"Row {r_idx + 1} ({sheet_name}): " + " | ".join(row_items))
+                    # Complete 100% attribute extraction from Excel sheets
+                    # A. Vertical Key-Value Sheet Check (Column 0 = Parameter, Column 1 = Value)
+                    is_vertical_kv = len(df.columns) == 2 or any(
+                        str(col).lower().strip() in ["parameter", "attribute", "specification", "item", "property", "name", "field"]
+                        for col in df.columns
+                    )
+                    
+                    if is_vertical_kv:
+                        for _, row in df.iterrows():
+                            vals = [str(v).strip() for v in row.values if pd.notna(v) and str(v).strip() and str(v).strip().lower() != "nan"]
+                            if len(vals) >= 2:
+                                k_raw = vals[0].rstrip(':=-').strip()
+                                v_raw = vals[1].strip()
+                                if 2 <= len(k_raw) <= 50 and v_raw:
+                                    extracted_attributes[k_raw] = v_raw
+                    
+                    # B. Horizontal Multi-Column Table Extraction across all rows
+                    for _, row in df.iterrows():
+                        for col, val in row.items():
+                            if pd.notna(val):
+                                val_str = str(val).strip()
+                                col_str = str(col).strip()
+                                if val_str and val_str.lower() != "nan" and col_str and not col_str.startswith("Unnamed:"):
+                                    if col_str not in extracted_attributes:
+                                        extracted_attributes[col_str] = val_str
 
                     source_citations.append({
                         "page": sheet_idx + 1,
@@ -150,6 +171,26 @@ class TabularProcessor:
                     row_items = [f"{col}: {val}" for col, val in row.items() if pd.notna(val) and str(val).strip()]
                     if row_items:
                         text_stream_parts.append(f"CSV Row {r_idx + 1}: " + " | ".join(row_items))
+
+                # Complete 100% attribute extraction from CSV
+                is_vertical_kv = len(df.columns) == 2
+                if is_vertical_kv:
+                    for _, row in df.iterrows():
+                        vals = [str(v).strip() for v in row.values if pd.notna(v) and str(v).strip() and str(v).strip().lower() != "nan"]
+                        if len(vals) >= 2:
+                            k_raw = vals[0].rstrip(':=-').strip()
+                            v_raw = vals[1].strip()
+                            if 2 <= len(k_raw) <= 50 and v_raw:
+                                extracted_attributes[k_raw] = v_raw
+
+                for _, row in df.iterrows():
+                    for col, val in row.items():
+                        if pd.notna(val):
+                            val_str = str(val).strip()
+                            col_str = str(col).strip()
+                            if val_str and val_str.lower() != "nan" and col_str and not col_str.startswith("Unnamed:"):
+                                if col_str not in extracted_attributes:
+                                    extracted_attributes[col_str] = val_str
 
                 source_citations.append({
                     "page": 1,
