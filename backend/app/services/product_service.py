@@ -211,9 +211,20 @@ class ProductService:
 
     @staticmethod
     def _format_product_detail(db: Session, p: Product) -> Dict[str, Any]:
-        # Get versions
-        versions = db.query(ProductVersion).filter(ProductVersion.product_id == p.id).order_by(desc(ProductVersion.created_at)).all()
+        # Get all versions
+        versions = db.query(ProductVersion).filter(ProductVersion.product_id == p.id).order_by(desc(ProductVersion.created_at), desc(ProductVersion.id)).all()
         current_ver = next((v for v in versions if v.is_current or v.id == p.current_version_id), versions[0] if versions else None)
+        
+        # Latest uploaded document for candidate staged specs
+        latest_doc = db.query(Document).filter(Document.product_id == p.id).order_by(desc(Document.created_at), desc(Document.id)).first()
+
+        # Staged / candidate draft version linked to latest document
+        staged_ver = None
+        if latest_doc:
+            staged_ver = db.query(ProductVersion).filter(ProductVersion.product_id == p.id, ProductVersion.source_document_id == latest_doc.id).first()
+        if not staged_ver:
+            staged_ver = next((v for v in versions if not v.is_current and v.status == "DRAFT"), next((v for v in versions if not v.is_current), None))
+        
         prev_ver = versions[1] if len(versions) > 1 else None
 
         current_specs = {}
@@ -222,11 +233,22 @@ class ProductService:
             for a in attrs:
                 current_specs[a.attribute_name] = a.attribute_value
 
+        staged_specs = {}
+        if latest_doc and latest_doc.extracted_attributes and isinstance(latest_doc.extracted_attributes, dict) and len(latest_doc.extracted_attributes) > 0:
+            staged_specs = {k: v for k, v in latest_doc.extracted_attributes.items() if not str(k).startswith("File Type") and not str(k).startswith("Total") and not str(k).startswith("Column:")}
+        
+        if not staged_specs and staged_ver:
+            attrs = db.query(ProductAttribute).filter(ProductAttribute.product_version_id == staged_ver.id).all()
+            for a in attrs:
+                staged_specs[a.attribute_name] = a.attribute_value
+
         prev_specs = {}
         if prev_ver:
             attrs = db.query(ProductAttribute).filter(ProductAttribute.product_version_id == prev_ver.id).all()
             for a in attrs:
                 prev_specs[a.attribute_name] = a.attribute_value
+
+        staged_version_num = (latest_doc.version_detected if latest_doc else None) or (staged_ver.version_number if staged_ver else None)
 
         changes_count = db.query(Change).filter(Change.product_id == p.id).count()
         pending_impacts = db.query(ChangeImpact).join(Change).filter(Change.product_id == p.id, ChangeImpact.reviewed == False).count()
@@ -245,8 +267,10 @@ class ProductService:
             "created_at": p.created_at,
             "updated_at": p.updated_at,
             "current_version": current_ver.version_number if current_ver else "v1.0",
+            "staged_version": staged_version_num,
             "previous_version": prev_ver.version_number if prev_ver else None,
             "specs": current_specs,
+            "staged_specs": staged_specs,
             "previous_specs": prev_specs,
             "changes_count": changes_count,
             "pending_impacts_count": pending_impacts

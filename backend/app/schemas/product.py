@@ -72,8 +72,10 @@ class ProductResponse(ProductBase):
     created_at: datetime
     updated_at: datetime
     specs: Optional[Dict[str, Any]] = {}
+    staged_specs: Optional[Dict[str, Any]] = {}
     previous_specs: Optional[Dict[str, Any]] = {}
     current_version: Optional[str] = None
+    staged_version: Optional[str] = None
     previous_version: Optional[str] = None
     changes_count: Optional[int] = 0
     pending_impacts_count: Optional[int] = 0

@@ -52,7 +52,6 @@ export default function EcommerceUpdatePage() {
         const res = await api.getProducts({ limit: 50 });
         if (res && Array.isArray(res.items) && res.items.length > 0) {
           setProducts(res.items);
-          // Prefer GB-100 if present, else first product
           const gb100 = res.items.find((p: any) => p.product_code === 'GB-100');
           const defaultId = gb100 ? gb100.id : res.items[0].id;
           setSelectedProductId(defaultId);
@@ -66,7 +65,7 @@ export default function EcommerceUpdatePage() {
     loadProducts();
   }, []);
 
-  // 2. Load product details and documents when selectedProductId changes
+  // 2. Load product details and latest document when selectedProductId changes
   useEffect(() => {
     if (!selectedProductId) return;
 
@@ -89,21 +88,30 @@ export default function EcommerceUpdatePage() {
     loadProductData();
   }, [selectedProductId]);
 
-  // Compute Spec Diffs
+  // Compute Spec Diffs between Live Storefront and Newly Ingested Datasheet
   const computeSpecDiffs = (): SpecDiff[] => {
     if (!selectedProduct) return [];
 
     const liveSpecs: Record<string, string> = selectedProduct.specs || {};
-    const ingestedSpecs: Record<string, string> = (latestDocument?.extracted_attributes as Record<string, string>) || {};
+    
+    // Ingested candidate specs: prioritize staged_specs from DB or document extracted_attributes
+    const candidateSpecs: Record<string, string> = 
+      (selectedProduct.staged_specs && Object.keys(selectedProduct.staged_specs).length > 0)
+        ? selectedProduct.staged_specs
+        : (latestDocument?.extracted_attributes as Record<string, string>) || {};
 
     const allKeys = Array.from(
-      new Set([...Object.keys(liveSpecs), ...Object.keys(ingestedSpecs)])
-    );
+      new Set([...Object.keys(liveSpecs), ...Object.keys(candidateSpecs)])
+    ).filter(k => !k.startsWith("File Type") && !k.startsWith("Total") && !k.startsWith("Column:"));
 
     return allKeys.map(key => {
       const liveVal = liveSpecs[key] || '—';
-      const ingestedVal = ingestedSpecs[key] || liveVal;
-      const isMismatch = liveVal !== '—' && ingestedVal !== '—' && liveVal.trim().toLowerCase() !== ingestedVal.trim().toLowerCase();
+      const ingestedVal = candidateSpecs[key] || liveVal;
+      const isMismatch = (
+        liveVal !== '—' && 
+        ingestedVal !== '—' && 
+        liveVal.trim().toLowerCase() !== ingestedVal.trim().toLowerCase()
+      );
 
       return {
         key,
@@ -117,8 +125,15 @@ export default function EcommerceUpdatePage() {
   const specDiffs = computeSpecDiffs();
   const mismatches = specDiffs.filter(d => d.isMismatch);
   const hasMismatches = mismatches.length > 0;
+  const hasCandidateData = Boolean(
+    (selectedProduct?.staged_specs && Object.keys(selectedProduct.staged_specs).length > 0) ||
+    (latestDocument && latestDocument.extracted_attributes && Object.keys(latestDocument.extracted_attributes).length > 0)
+  );
 
-  // 3. Approve and Push Update to Production InduCore API
+  const currentVersionLabel = selectedProduct?.current_version || 'v1.0';
+  const stagedVersionLabel = selectedProduct?.staged_version || latestDocument?.version_detected || 'v2.0';
+
+  // 3. Approve and Push Update to Live InduCore Storefront
   const handleApproveAndPush = async () => {
     if (!selectedProduct) return;
 
@@ -127,18 +142,16 @@ export default function EcommerceUpdatePage() {
     const updates: Record<string, string> = {};
     mismatches.forEach(m => {
       updates[m.key] = m.ingestedValue;
-      // Also provide canonical lowercase and space-free aliases
       updates[m.key.toLowerCase()] = m.ingestedValue;
       if (m.key.toLowerCase() === 'ratio') {
         updates['Gear Ratio'] = m.ingestedValue;
       }
     });
 
-    if (Object.keys(updates).length === 0 && latestDocument?.extracted_attributes) {
-      Object.assign(updates, latestDocument.extracted_attributes);
+    if (Object.keys(updates).length === 0 && selectedProduct?.staged_specs) {
+      Object.assign(updates, selectedProduct.staged_specs);
     }
 
-    // Determine current live version from production store or default
     let expectedVer = 1;
     try {
       const checkRes = await fetch(`https://inducore-website.vercel.app/api/products/${selectedProduct.product_code}`);
@@ -160,8 +173,8 @@ export default function EcommerceUpdatePage() {
       newVersion: expectedVer + 1,
       updates: updates,
       source: {
-        documentName: latestDocument?.original_file_name || 'GB-100_Ecommerce_Update_Test_v2.csv',
-        documentVersion: latestDocument?.version_detected || '2.0'
+        documentName: latestDocument?.original_file_name || `${selectedProduct.product_code}_Datasheet_${stagedVersionLabel}.csv`,
+        documentVersion: stagedVersionLabel
       },
       approval: {
         approved: true,
@@ -220,7 +233,7 @@ export default function EcommerceUpdatePage() {
       });
       return {
         ...prev,
-        current_version: latestDocument?.version_detected || `v${expectedVer + 1}.0`,
+        current_version: stagedVersionLabel,
         specs: updatedSpecs
       };
     });
@@ -265,7 +278,7 @@ export default function EcommerceUpdatePage() {
 
             <button
               onClick={handleApproveAndPush}
-              disabled={isSyncing || (!hasMismatches && isPublished)}
+              disabled={isSyncing || (!hasMismatches && isPublished) || !hasCandidateData}
               className={`px-5 py-2 text-xs font-bold rounded-lg shadow-sm transition-all inline-flex items-center gap-2 ${
                 isPublished
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
@@ -356,10 +369,10 @@ export default function EcommerceUpdatePage() {
             </div>
             <div>
               <h4 className="text-xs font-bold">
-                {mismatches.length} Specification Mismatch Detected
+                {mismatches.length} Specification Mismatches Detected
               </h4>
               <p className="text-[11px] text-amber-800">
-                Newly ingested datasheet contains updated technical specs that differ from the current live storefront.
+                Newly ingested datasheet contains updated technical specs ({stagedVersionLabel}) that differ from the current live storefront ({currentVersionLabel}).
               </p>
             </div>
           </div>
@@ -370,7 +383,7 @@ export default function EcommerceUpdatePage() {
       )}
 
       {/* No Datasheet Available State */}
-      {!latestDocument && (
+      {!hasCandidateData && (
         <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-3">
           <FileText className="w-10 h-10 text-slate-400 mx-auto" />
           <h4 className="text-sm font-bold text-slate-800">
@@ -390,7 +403,7 @@ export default function EcommerceUpdatePage() {
       )}
 
       {/* Side-by-Side Comparison Panels */}
-      {latestDocument && selectedProduct && (
+      {hasCandidateData && selectedProduct && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Panel: Current Live Storefront */}
           <div className="bg-white rounded-2xl border border-slate-300 shadow-xs overflow-hidden flex flex-col justify-between">
@@ -398,11 +411,11 @@ export default function EcommerceUpdatePage() {
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Current Live Storefront ({selectedProduct.current_version || 'v1.0'})
+                  Current Live Storefront ({currentVersionLabel})
                 </span>
               </div>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold border border-slate-300">
-                Active Catalog
+                Active Master
               </span>
             </div>
 
@@ -423,7 +436,7 @@ export default function EcommerceUpdatePage() {
                     {selectedProduct.name}
                   </h3>
                   <p className="text-xs text-slate-500 font-mono mt-0.5">
-                    Model: {selectedProduct.product_code}
+                    Model: {selectedProduct.product_code} • Current: {currentVersionLabel}
                   </p>
                 </div>
               </div>
@@ -438,7 +451,7 @@ export default function EcommerceUpdatePage() {
                     }`}
                   >
                     <span className="text-slate-500 font-sans font-medium">{diff.key}:</span>
-                    <span className={`font-bold ${diff.isMismatch ? 'text-rose-700 line-through' : 'text-slate-800'}`}>
+                    <span className={`font-bold ${diff.isMismatch ? 'text-rose-700 line-through font-extrabold' : 'text-slate-800'}`}>
                       {diff.liveValue}
                     </span>
                   </div>
@@ -457,11 +470,11 @@ export default function EcommerceUpdatePage() {
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-bold text-blue-950 uppercase tracking-wider">
-                  Newly Ingested Datasheet ({latestDocument.version_detected || 'v2.0'})
+                  Newly Ingested Datasheet ({stagedVersionLabel})
                 </span>
               </div>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
-                Verified Staged
+                Verified Uploaded
               </span>
             </div>
 
@@ -472,13 +485,13 @@ export default function EcommerceUpdatePage() {
                 </div>
                 <div>
                   <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
-                    Source: {latestDocument.original_file_name}
+                    Source: {latestDocument?.original_file_name || 'Uploaded Datasheet'}
                   </span>
                   <h3 className="text-base font-bold text-slate-900">
                     {selectedProduct.name}
                   </h3>
                   <p className="text-xs text-slate-500 font-mono mt-0.5">
-                    Target Model: {selectedProduct.product_code}
+                    Target Model: {selectedProduct.product_code} • Staged: {stagedVersionLabel}
                   </p>
                 </div>
               </div>
@@ -489,12 +502,12 @@ export default function EcommerceUpdatePage() {
                   <div
                     key={`ingested-${diff.key}`}
                     className={`flex justify-between items-center py-1.5 px-2 rounded ${
-                      diff.isMismatch ? 'bg-emerald-50 border border-emerald-300 text-emerald-950' : 'border-b border-blue-100 text-slate-700'
+                      diff.isMismatch ? 'bg-emerald-50 border border-emerald-300 text-emerald-950 shadow-2xs' : 'border-b border-blue-100 text-slate-700'
                     }`}
                   >
                     <span className="text-slate-600 font-sans font-medium">{diff.key}:</span>
                     <div className="flex items-center gap-2">
-                      <span className={`font-bold ${diff.isMismatch ? 'text-emerald-700 font-extrabold' : 'text-slate-800'}`}>
+                      <span className={`font-bold ${diff.isMismatch ? 'text-emerald-700 font-black' : 'text-slate-800'}`}>
                         {diff.ingestedValue} {diff.isMismatch && '✨'}
                       </span>
                       {diff.isMismatch ? (
@@ -513,7 +526,7 @@ export default function EcommerceUpdatePage() {
             </div>
 
             <div className="p-3 bg-blue-50/50 border-t border-blue-200 flex items-center justify-between text-xs text-blue-900 font-semibold px-6">
-              <span>{hasMismatches ? `${mismatches.length} attribute update staged` : 'All specifications matching'}</span>
+              <span>{hasMismatches ? `${mismatches.length} specification mismatches detected` : 'All specifications matching'}</span>
               <button
                 onClick={handleApproveAndPush}
                 disabled={isSyncing}
