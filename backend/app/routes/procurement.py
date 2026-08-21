@@ -189,87 +189,35 @@ def parse_prompt(data: ParsePromptRequest):
     prompt = data.prompt
     lower_prompt = prompt.lower()
 
-    # ── 1. Identify category ─────────────────────────────────────────────────
-    category = "motor"
+    # 1. Identify category dynamically
+    category = "gearbox"
     if "pump" in lower_prompt or "centrifugal" in lower_prompt:
         category = "pump"
     elif "valve" in lower_prompt or "gate valve" in lower_prompt:
         category = "valve"
     elif "compressor" in lower_prompt or "screw air" in lower_prompt:
         category = "compressor"
+    elif "motor" in lower_prompt or "induction" in lower_prompt:
+        category = "motor"
     elif "gearbox" in lower_prompt or "helical" in lower_prompt:
         category = "gearbox"
 
-    # ── 2. Extract Quantity ───────────────────────────────────────────────────
+    # 2. Extract Quantity
     qty = 1
     qty_match = re.search(r"\b(?:need|find|get|want|for)\s+(\d+)\b", lower_prompt)
     if not qty_match:
-        qty_match = re.search(r"\b(\d+)\s*(?:motors|pumps|valves|compressors|gearboxes|units)\b", lower_prompt)
+        qty_match = re.search(r"\b(\d+)\s*(?:motors|pumps|valves|compressors|gearboxes|units|gearbox|pump|motor|valve|compressor)\b", lower_prompt)
     if qty_match:
         try:
             qty = int(qty_match.group(1))
         except Exception:
             qty = 1
 
-    # ── 3. Build synonym lookup for each attribute ────────────────────────────
-    ATTR_SYNONYMS: Dict[str, List[str]] = {
-        # Gearbox
-        "ratio":        ["gear ratio", "gearratio", "ratio"],
-        "inputSpeed":   ["input speed", "input rpm", "inputspeed"],
-        "outputSpeed":  ["output speed", "output rpm", "outputspeed"],
-        "torque":       ["output torque", "rated torque", "torque"],
-        "efficiency":   ["efficiency"],
-        "power":        ["rated output", "output power", "input power", "power"],
-        "weight":       ["weight"],
-        "mounting":     ["mounting type", "mounting", "mount"],
-        # Motor
-        "voltage":      ["rated voltage", "voltage", "volt"],
-        "ipRating":     ["ip rating", "protection rating", "iprating"],
-        "speed":        ["synchronous speed", "rated speed", "speed"],
-        # Pump
-        "flowRate":     ["flow rate", "flowrate"],
-        "pressure":     ["pressure"],
-        "head":         ["head"],
-        "material":     ["housing material", "material"],
-        "temperature":  ["max temperature", "temperature", "temp"],
-        # Valve
-        "size":         ["nominal diameter", "nominal size", "pipe size", "size"],
-        "pressureRating": ["pressure rating", "pressurerating", "pressure class"],
-        "connection":   ["connection type", "connection", "end connection"],
-        # Compressor
-        "capacity":     ["tank capacity", "capacity"],
-        "workingPressure": ["working pressure", "workingpressure"],
-        "cooling":      ["cooling type", "cooling"],
-        "noise":        ["noise level", "noise"],
-        # Commercial
-        "maxPrice":     ["budget", "price", "cost", "₹", "inr", "rupees", "rupee", "rs"],
-        "deliveryDays": ["lead time", "delivery", "delivery days"],
-    }
-
-    # ── 4. Build list of attributes to check for the detected category ────────
-    cat_schema = CATEGORY_SCHEMAS.get(category, {})
-    cat_attr_names = [a["name"] for a in cat_schema.get("attributes", [])]
-    all_attr_names = cat_attr_names + ["maxPrice", "deliveryDays"]
-
-    ATTR_META: Dict[str, Dict] = {}
-    for a in cat_schema.get("attributes", []):
-        ATTR_META[a["name"]] = a
-    ATTR_META["maxPrice"] = {"type": "numeric", "units": ["INR"], "default_unit": "INR"}
-    ATTR_META["deliveryDays"] = {"type": "numeric", "units": ["days", "weeks"], "default_unit": "days"}
-
-    # ── 5. Clean prompt & Split into clauses ──────────────────────────────────
-    # Clean commas in numbers like "₹30,000" or "30,000" -> "30000"
+    # 3. Clean prompt & split clauses by commas, semicolons, periods, "and", "with"
     cleaned_prompt = re.sub(r"(?<=\d),(?=\d)", "", lower_prompt)
-    raw_clauses = re.split(r",|;|\band\b|\bwith\b", cleaned_prompt)
+    raw_clauses = re.split(r"[,;.]|\band\b|\bwith\b", cleaned_prompt)
 
-    INTRO_KEYWORDS = {
-        "motor", "motors", "pump", "pumps", "valve", "valves",
-        "compressor", "compressors", "gearbox", "gearboxes",
-        "find", "need", "get", "want", "with", "for", "a", "an",
-        "units", "unit",
-    }
-
-    constraints: List[Dict] = []
+    constraints = []
     seen_attributes = set()
 
     for raw_clause in raw_clauses:
@@ -277,160 +225,224 @@ def parse_prompt(data: ParsePromptRequest):
         if not clause:
             continue
 
-        # Skip intro clauses (e.g. "find 1 gearbox")
-        words = re.sub(r"\d+", "", clause).split()
-        non_intro_words = [w for w in words if w not in INTRO_KEYWORDS]
-        if not non_intro_words:
+        # Skip generic search intro clauses like "find 1 gearbox"
+        if re.fullmatch(r"(?:find|need|get|want)\s+\d+\s+(?:gearbox|gearboxes|motor|motors|pump|pumps|valve|valves|compressor|compressors|units|unit)", clause):
             continue
 
-        # ── Match attribute ───────────────────────────────────────────────────
-        matched_attr_name: Optional[str] = None
-
-        for attr_name in all_attr_names:
-            synonyms = ATTR_SYNONYMS.get(attr_name, [attr_name.lower()])
-            for syn in sorted(synonyms, key=len, reverse=True):
-                if re.search(r"\b" + re.escape(syn) + r"\b", clause) or (syn in ["₹", "inr", "rs"] and syn in clause):
-                    matched_attr_name = attr_name
-                    break
-            if matched_attr_name:
-                break
-
-        # Fallback pattern matching for special cases
-        if not matched_attr_name:
-            if re.search(r"\b\d+:\d+\b", clause) and "ratio" in all_attr_names:
-                matched_attr_name = "ratio"
-            elif re.search(r"\bip\s*\d{2}\b", clause) and "ipRating" in all_attr_names:
-                matched_attr_name = "ipRating"
-            elif re.search(r"\b(?:ss316|ss304|stainless steel|cast iron|bronze)\b", clause) and "material" in all_attr_names:
-                matched_attr_name = "material"
-            elif re.search(r"\b(?:flanged|threaded|welded)\b", clause) and "connection" in all_attr_names:
-                matched_attr_name = "connection"
-            elif re.search(r"\bdn\s*\d+\b", clause) and "size" in all_attr_names:
-                matched_attr_name = "size"
-
-        if not matched_attr_name or matched_attr_name in seen_attributes:
-            continue
-
-        attr_meta = ATTR_META.get(matched_attr_name, {})
-
-        # ── Determine operator ────────────────────────────────────────────────
         operator = "="
         if re.search(r"\bat least\b|\bminimum\b|\bmin\b|\b>=\b", clause):
             operator = ">="
-        elif re.search(r"\bunder\b|\bbelow\b|\bmaximum\b|\bmax\b|\bwithin\b|\b<=\b", clause):
+        elif re.search(r"\bunder\b|\bbelow\b|\bmaximum\b|\bmax\b|\bwithin\b|\b<=\b|\bor less\b", clause):
             operator = "<="
         elif re.search(r"\bover\b|\babove\b|\b>\b(?!=)", clause):
             operator = ">"
         elif re.search(r"\bless than\b|\b<\b(?!=)", clause):
             operator = "<"
 
-        # ── Determine mandatory / preferred ───────────────────────────────────
-        mandatory = True
-        if re.search(r"\bprefer\b|\boptional\b|\bnice.to.have\b", clause):
-            mandatory = False
-            operator = "="
+        # Ratio
+        ratio_m = re.search(r"\b(\d+:\d+)\b", clause)
+        if ratio_m and "ratio" not in seen_attributes:
+            constraints.append({
+                "attribute": "ratio",
+                "operator": operator if operator != "<=" else "=",
+                "value": ratio_m.group(1),
+                "unit": "",
+                "mandatory": True
+            })
+            seen_attributes.add("ratio")
+            continue
 
-        # ── Extract value ─────────────────────────────────────────────────────
-        attr_type = attr_meta.get("type", "numeric")
-
-        if matched_attr_name == "maxPrice":
-            # Currency price extraction
-            # Supports ₹30,000, 30,000 INR, 30000 INR, ₹30k, 30k INR, 30000 rupees
-            num_m = re.search(r"[₹$]?\s*(\d+(?:\.\d+)?)\s*([kK])?\s*([a-zA-Z%/]+)?", clause)
+        # Input Speed / Output Speed / Speed
+        if ("input speed" in clause or "input rpm" in clause) and "inputSpeed" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
             if num_m:
-                val = float(num_m.group(1))
-                if num_m.group(2) and num_m.group(2).lower() == "k":
-                    val *= 1000.0
-                unit_raw = (num_m.group(3) or "").strip().lower()
-                if unit_raw in ["k", "kinr", "krs"]:
-                    val *= 1000.0
+                constraints.append({
+                    "attribute": "inputSpeed",
+                    "operator": operator,
+                    "value": float(num_m.group(1)),
+                    "unit": "RPM",
+                    "mandatory": True
+                })
+                seen_attributes.add("inputSpeed")
+                continue
+
+        if ("output speed" in clause or "output rpm" in clause) and "outputSpeed" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "outputSpeed",
+                    "operator": operator,
+                    "value": float(num_m.group(1)),
+                    "unit": "RPM",
+                    "mandatory": True
+                })
+                seen_attributes.add("outputSpeed")
+                continue
+
+        if "speed" in clause and "speed" not in seen_attributes and "inputSpeed" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "speed",
+                    "operator": operator,
+                    "value": float(num_m.group(1)),
+                    "unit": "RPM",
+                    "mandatory": True
+                })
+                seen_attributes.add("speed")
+                continue
+
+        # Efficiency
+        if "efficiency" in clause and "efficiency" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)\s*%", clause)
+            if not num_m:
+                num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "efficiency",
+                    "operator": operator if operator != "=" else ">=",
+                    "value": float(num_m.group(1)),
+                    "unit": "%",
+                    "mandatory": True
+                })
+                seen_attributes.add("efficiency")
+                continue
+
+        # Torque
+        if "torque" in clause and "torque" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "torque",
+                    "operator": operator if operator != "=" else ">=",
+                    "value": float(num_m.group(1)),
+                    "unit": "Nm",
+                    "mandatory": True
+                })
+                seen_attributes.add("torque")
+                continue
+
+        # Power
+        if "power" in clause and "power" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:kw|hp|w)?", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "power",
+                    "operator": operator if operator != "=" else ">=",
+                    "value": float(num_m.group(1)),
+                    "unit": "kW",
+                    "mandatory": True
+                })
+                seen_attributes.add("power")
+                continue
+
+        # Price / Budget
+        if ("price" in clause or "budget" in clause or "cost" in clause or "inr" in clause or "₹" in clause or "rs" in clause) and "maxPrice" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
                 constraints.append({
                     "attribute": "maxPrice",
                     "operator": operator if operator != "=" else "<=",
-                    "value": val,
+                    "value": float(num_m.group(1)),
                     "unit": "INR",
                     "currency": "INR",
-                    "mandatory": mandatory
+                    "mandatory": True
                 })
-                seen_attributes.add(matched_attr_name)
+                seen_attributes.add("maxPrice")
                 continue
 
-        elif attr_type == "string" or matched_attr_name == "ratio":
-            # Ratio pattern
-            ratio_m = re.search(r"(\b\d+:\d+\b)", clause)
-            if ratio_m:
-                constraints.append({
-                    "attribute": matched_attr_name,
-                    "operator": operator,
-                    "value": ratio_m.group(1),
-                    "unit": "",
-                    "mandatory": mandatory
-                })
-                seen_attributes.add(matched_attr_name)
-                continue
-
-            # IP rating
-            ip_m = re.search(r"\b(ip\s*\d{2})\b", clause)
-            if ip_m and matched_attr_name == "ipRating":
-                constraints.append({
-                    "attribute": matched_attr_name,
-                    "operator": operator,
-                    "value": ip_m.group(1).upper().replace(" ", ""),
-                    "unit": "",
-                    "mandatory": mandatory
-                })
-                seen_attributes.add(matched_attr_name)
-                continue
-
-            # Known choices
-            choices = attr_meta.get("choices", [])
-            matched_choice: Optional[str] = None
-            for ch in choices:
-                if ch.lower() in clause:
-                    matched_choice = ch
-                    break
-
-            if not matched_choice:
-                if "ss316" in clause:
-                    matched_choice = "SS316"
-                elif "ss304" in clause:
-                    matched_choice = "SS304"
-                elif re.search(r"\bflanged\b|\brf\b", clause):
-                    matched_choice = "Flanged"
-                elif "threaded" in clause:
-                    matched_choice = "Threaded"
-                elif "cast iron" in clause:
-                    matched_choice = "Cast Iron"
-                elif re.search(r"\bdn\s*(\d+)\b", clause):
-                    dn_m = re.search(r"\bdn\s*(\d+)\b", clause)
-                    matched_choice = f"DN{dn_m.group(1)}"
-
-            if matched_choice:
-                constraints.append({
-                    "attribute": matched_attr_name,
-                    "operator": operator,
-                    "value": matched_choice,
-                    "unit": "",
-                    "mandatory": mandatory
-                })
-                seen_attributes.add(matched_attr_name)
-        else:
-            # Numeric extraction
-            num_m = re.search(r"(?<!\d:)(?<!:\d)\b(\d+(?:\.\d+)?)\s*([a-zA-Z%/]+)?", clause)
+        # Delivery / Lead Time
+        if ("delivery" in clause or "lead time" in clause or "days" in clause or "day" in clause) and "deliveryDays" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
             if num_m:
-                raw_val = float(num_m.group(1))
-                raw_unit = (num_m.group(2) or "").strip()
-                norm_val, norm_unit = normalize_value(raw_val, raw_unit)
-                if not norm_unit:
-                    norm_unit = attr_meta.get("default_unit", "")
                 constraints.append({
-                    "attribute": matched_attr_name,
-                    "operator": operator,
-                    "value": norm_val,
-                    "unit": norm_unit,
-                    "mandatory": mandatory
+                    "attribute": "deliveryDays",
+                    "operator": operator if operator != "=" else "<=",
+                    "value": float(num_m.group(1)),
+                    "unit": "days",
+                    "mandatory": True
                 })
-                seen_attributes.add(matched_attr_name)
+                seen_attributes.add("deliveryDays")
+                continue
+
+        # MOQ
+        if "moq" in clause and "moq" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "moq",
+                    "operator": operator if operator != "=" else "<=",
+                    "value": float(num_m.group(1)),
+                    "unit": "units",
+                    "mandatory": True
+                })
+                seen_attributes.add("moq")
+                continue
+
+        # Pressure / Head / Flow Rate / Size
+        if ("flow" in clause or "flowrate" in clause) and "flowRate" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "flowRate",
+                    "operator": operator,
+                    "value": float(num_m.group(1)),
+                    "unit": "L/min",
+                    "mandatory": True
+                })
+                seen_attributes.add("flowRate")
+                continue
+
+        if ("pressure" in clause or "bar" in clause) and "pressure" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "pressure",
+                    "operator": operator if operator != "=" else ">=",
+                    "value": float(num_m.group(1)),
+                    "unit": "bar",
+                    "mandatory": True
+                })
+                seen_attributes.add("pressure")
+                continue
+
+        if ("head" in clause or "meter" in clause) and "head" not in seen_attributes:
+            num_m = re.search(r"(\d+(?:\.\d+)?)", clause)
+            if num_m:
+                constraints.append({
+                    "attribute": "head",
+                    "operator": operator if operator != "=" else ">=",
+                    "value": float(num_m.group(1)),
+                    "unit": "m",
+                    "mandatory": True
+                })
+                seen_attributes.add("head")
+                continue
+
+        # Supplier Status
+        if "supplier" in clause and ("approved" in clause or "preferred" in clause) and "supplierStatus" not in seen_attributes:
+            status_val = "APPROVED" if "approved" in clause else "PREFERRED"
+            constraints.append({
+                "attribute": "supplierStatus",
+                "operator": "=",
+                "value": status_val,
+                "unit": "",
+                "mandatory": True
+            })
+            seen_attributes.add("supplierStatus")
+            continue
+
+        # Offer Status
+        if "offer" in clause and "active" in clause and "offerStatus" not in seen_attributes:
+            constraints.append({
+                "attribute": "offerStatus",
+                "operator": "=",
+                "value": "ACTIVE",
+                "unit": "",
+                "mandatory": True
+            })
+            seen_attributes.add("offerStatus")
+            continue
 
     return {
         "category": category,
