@@ -738,17 +738,17 @@ export default function ProcurementPage() {
                     <AlertTriangle className="w-6 h-6 animate-pulse" />
                   </div>
                   <h4 className="text-base font-bold text-slate-900">
-                    No exact matches found.
+                    No uploaded product data found.
                   </h4>
                   <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
-                    No supplier satisfies 100% of the mandatory technical and commercial constraints. Review closest alternatives to evaluate specs tradeoffs.
+                    No uploaded product or supplier offer satisfies these constraints. Please upload datasheets, Excel catalog spreadsheets, or supplier offers on the Upload & Ingest page.
                   </p>
-                  <button
-                    onClick={() => setActiveTab('alternatives')}
-                    className="mt-3 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors"
+                  <Link
+                    href="/upload"
+                    className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1.5"
                   >
-                    View Closest Alternatives & Tradeoffs →
-                  </button>
+                    <span>Upload Product Data →</span>
+                  </Link>
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">

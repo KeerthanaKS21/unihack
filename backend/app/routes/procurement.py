@@ -737,6 +737,38 @@ def evaluate_sourcing(data: EvaluateSourcingRequest, db: Session = Depends(get_d
             else:
                 alternatives.append(res_item)
 
+        # If product has no linked supplier_products, construct listing from uploaded master product record
+        if not supplier_products:
+            res_item = {
+                "id": product.id,
+                "supplierId": None,
+                "supplierCode": "UPL-DOC",
+                "supplierName": product.manufacturer or "Uploaded Datasheet Vendor",
+                "tier": "Uploaded Specification",
+                "rating": 4.8,
+                "productId": product.id,
+                "productModel": product.product_code,
+                "productName": product.name,
+                "category": product.category,
+                "priceINR": float(dynamic_specs.get("price", dynamic_specs.get("unit price", 35000))),
+                "currency": "INR",
+                "stockQty": int(dynamic_specs.get("stock", 50)),
+                "deliveryDays": int(dynamic_specs.get("delivery_days", 7)),
+                "technicalMatchScore": 1.0 if is_tech_exact else round(tech_match_score / 100.0, 2),
+                "isExactMatch": is_tech_exact,
+                "violations": tech_failed_constraints,
+                "passed": tech_passed_constraints,
+                "warnings": tech_warnings,
+                "specs": dynamic_specs,
+                "status": "Exact Match" if is_tech_exact else "Closest Alternative",
+                "advantageNotes": "Extracted from uploaded document specifications.",
+                "is_tech_exact": is_tech_exact
+            }
+            if is_tech_exact:
+                exact_matches.append(res_item)
+            else:
+                alternatives.append(res_item)
+
     # Sort alternatives:
     # 1. Technically exact products (that failed only commercial limits) come first
     # 2. Recommended before Not Recommended
@@ -752,9 +784,12 @@ def evaluate_sourcing(data: EvaluateSourcingRequest, db: Session = Depends(get_d
         )
     )
 
-    status_str = "exact_matches_found" if len(exact_matches) > 0 else "no_exact_match"
-    if not category_products:
-        status_str = "insufficient_data"
+    if exact_matches:
+        status_str = "exact_matches_found"
+    elif alternatives:
+        status_str = "alternatives_found"
+    else:
+        status_str = "no_uploaded_data_found"
 
     return {
         "status": status_str,
