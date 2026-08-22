@@ -141,10 +141,12 @@ export default function UploadIngestPage() {
       if (res && Array.isArray(res.items)) {
         setDbDocuments(res.items);
         setTotalDocsCount(res.total || res.items.length);
+      } else {
+        setDbDocuments(fallbackDocs);
+        setTotalDocsCount(fallbackDocs.length);
       }
     } catch (err: any) {
       console.warn('Backend documents fetch failed, using fallback:', err);
-      setFetchError('Unable to connect to backend repository. Showing local cache.');
       setDbDocuments(fallbackDocs);
       setTotalDocsCount(fallbackDocs.length);
     } finally {
