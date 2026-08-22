@@ -293,28 +293,23 @@ export default function UploadIngestPage() {
     }
   };
 
-  // Quick Test Trigger Helper for the four official test CSV datasets
+  // Quick Test Trigger Helper for the official test CSV datasets
   const handleQuickDemoUpload = (sampleName: string) => {
     let dummyContent = '';
 
-    if (sampleName.includes('GB-100_v3') || sampleName.includes('GB-100_v3_Revision')) {
+    if (sampleName.includes('nexusguard_nx450_baseline') || sampleName.includes('baseline_v1')) {
+      dummyContent = `Product ID,Product Name,Manufacturer,Category,Model,Rated Power,Voltage,Frequency,Rated Current,Speed,IP Rating,Operating Temperature,Efficiency,Mounting,Insulation Class,Applicable Standard,RoHS Status,ATEX Status,Weight
+NIS-NX450-415,NexusGuard NX-450 Industrial Motor,Nova Industrial Systems,Industrial Motor,NX-450,5.5 kW,415 V AC,50 Hz,11.2 A,1450 rpm,IP55,-20°C to +40°C,89.5%,B3,F,IEC 60034-1,Compliant,N/A - Standard Environment,52 kg
+NIS-DRV550-415,DriveMax D550 Motor Controller,Nova Industrial Systems,Motor Controller,D550,5.5 kW,415 V AC,50 Hz,13 A max,1500 rpm max,IP54,-10°C to +40°C,96%,Panel,N/A,IEC 61800-5-1,Compliant,N/A - Standard Environment,8 kg
+`;
+    } else if (sampleName.includes('nexusguard_nx450_update') || sampleName.includes('update_v2')) {
+      dummyContent = `Product ID,Product Name,Manufacturer,Category,Model,Rated Power,Voltage,Frequency,Rated Current,Speed,IP Rating,Operating Temperature,Efficiency,Mounting,Insulation Class,Applicable Standard,RoHS Status,ATEX Status,Weight
+NIS-NX450-415,NexusGuard NX-450 Industrial Motor,Nova Industrial Systems,Industrial Motor,NX-450,7.5 kW,415 V AC,50 Hz,15.1 A,1475 rpm,IP55,-20°C to +50°C,91.0%,B3,F,IEC 60034-1,Compliant,N/A - Standard Environment,55 kg
+NIS-DRV550-415,DriveMax D550 Motor Controller,Nova Industrial Systems,Motor Controller,D550,5.5 kW,415 V AC,50 Hz,13 A max,1500 rpm max,IP54,-10°C to +40°C,96%,Panel,N/A,IEC 61800-5-1,Compliant,N/A - Standard Environment,8 kg
+`;
+    } else if (sampleName.includes('GB-100_v3') || sampleName.includes('GB-100')) {
       dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
 GB-100,Coaxial Helical Gearbox H100,Gearboxes,3,1 kW,,,,Foot Mount,,,2000 RPM,12:1,78%,144 RPM,320 Nm,Cast Iron,Synthetic ISO VG 220,18 kg,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,25480,INR,20,5,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,19-08-2026
-`;
-    } else if (sampleName.includes('C105') || sampleName.includes('Controller')) {
-      dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
-C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,76440.0,INR,18,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,81900.0,INR,14,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,72540.0,INR,10,9,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-`;
-    } else if (sampleName.includes('Valves') || sampleName.includes('Compressors')) {
-      dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
-V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,14210.0,INR,25,4,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,15225.0,INR,19,5,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,13485.0,INR,14,6,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,161700.0,INR,10,8,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
 `;
     } else {
       dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
@@ -361,8 +356,8 @@ COMP-102,Silent Rotary Scroll Compressor,Compressors,1,7.5 kW,415 V,,,,,,2900 RP
 COMP-102,Silent Rotary Scroll Compressor,Compressors,1,7.5 kW,415 V,,,,,,2900 RPM,,,,,,145 kg,,,,,,,,800 L/min,8 bar,200 L,Forced Air Cooled,62 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
 COMP-102,Silent Rotary Scroll Compressor,Compressors,1,7.5 kW,415 V,,,,,,2900 RPM,,,,,,145 kg,,,,,,,,800 L/min,8 bar,200 L,Forced Air Cooled,62 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
 COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,290 kg,,,,,,,,1200 L/min,10 bar,500 L,Air Cooled,78 dB(A),,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,161700.0,INR,10,8,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
-COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,290 kg,,,,,,,,1200 L/min,10 bar,500 L,Air Cooled,78 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,290 kg,,,,,,,,1200 L/min,10 bar,500 L,Air Cooled,78 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
 `;
     }
 
@@ -481,45 +476,45 @@ COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
               ⚡ Official Test Datasets (Click to stage for upload)
             </span>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
+            <div className="flex items-center justify-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleQuickDemoUpload('nexusguard_nx450_baseline_v1.csv')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 text-xs font-bold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>CSV 1: NexusGuard Baseline (v1.0)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemoUpload('nexusguard_nx450_update_v2.csv')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 text-xs font-bold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+                <span>CSV 2: NexusGuard Revision (v2.0)</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => handleQuickDemoUpload('GB-100_v3_Revision.csv')}
                 disabled={isUploading}
-                className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-700 border border-purple-300 text-xs font-bold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>CSV 1: GB-100_v3_Revision.csv</span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
+                <span>CSV 3: GB-100 Gearbox (v3.0)</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleQuickDemoUpload('Master_Industrial_Equipment_Catalog.csv')}
                 disabled={isUploading}
-                className="px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-amber-300 text-xs font-bold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>CSV 2: Master_Industrial_Catalog.csv</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoUpload('VFD_Outdoor_Controller_C105.csv')}
-                disabled={isUploading}
-                className="px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>CSV 3: VFD_Controller_C105.csv</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoUpload('Valves_And_Compressors_Datasheet.csv')}
-                disabled={isUploading}
-                className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>CSV 4: Valves_Compressors.csv</span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600" />
+                <span>CSV 4: Master Equipment Catalog</span>
               </button>
             </div>
           </div>
