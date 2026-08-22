@@ -24,9 +24,8 @@ export default function StorefrontProductPage({ params }: { params: { slug: stri
 
   const fetchStorefrontData = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/api/ecommerce/storefront/${productCode}`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await api.getStorefrontData(productCode);
+      if (data) {
         setProductData(data);
       }
     } catch (e) {

@@ -683,7 +683,9 @@ COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,
                     : (doc.uploadedOn || 'Aug 18, 2026');
                   const sizeFormatted = doc.file_size_formatted || doc.fileSize || '1.2 MB';
                   const status = doc.processing_status || doc.status || 'Uploaded';
-                  const downloadUrl = `http://localhost:8000/uploads/${doc.file_name || fileName}`;
+                  const downloadUrl = (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+                    ? `/uploads/${doc.file_name || fileName}`
+                    : `http://localhost:8000/uploads/${doc.file_name || fileName}`;
 
                   const openDetails = () => {
                     const mergedAttrs: Record<string, any> = {};

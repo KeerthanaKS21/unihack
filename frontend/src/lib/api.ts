@@ -3,10 +3,24 @@
  * Seamlessly bridges the Next.js Frontend with the FastAPI Backend.
  */
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL
-    ? `${process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/+$/, '')}/api`
-    : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const getBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/+$/, '');
+    return base.endsWith('/api') ? base : `${base}/api`;
+  }
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const base = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+    return base.endsWith('/api') ? base : `${base}/api`;
+  }
+  // When running on deployed production website (e.g. Vercel domain), default to relative /api
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '/api';
+  }
+  // Local development default
+  return 'http://localhost:8000/api';
+};
+
+const API_BASE_URL = getBaseUrl();
 
 export interface ApiErrorResponse {
   detail: string;
@@ -354,6 +368,9 @@ export const api = {
     }),
 
   // E-commerce
+  getStorefrontData: (productCode: string) =>
+    request<any>(`/ecommerce/storefront/${productCode}`),
+
   syncEcommerceCatalog: (productId: string | number) =>
     request<any>(`/ecommerce/sync/${productId}`, {
       method: 'POST',

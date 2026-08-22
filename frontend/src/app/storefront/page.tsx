@@ -28,9 +28,8 @@ export default function StorefrontCatalogPage() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/products?limit=50');
-      if (res.ok) {
-        const data = await res.json();
+      const data = await api.getProducts({ limit: 50 });
+      if (data) {
         const items = Array.isArray(data) ? data : (data?.items || []);
         setProducts(items);
       }
