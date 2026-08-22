@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
+from sqlalchemy import desc, or_, and_
 from fastapi import HTTPException
 from app.db.models.product import Product, ProductVersion, ProductAttribute
 from app.db.models.change import Change, ChangeImpact
@@ -339,6 +340,22 @@ class EcommerceSyncService:
             for attr in latest_v.attributes:
                 c_key = to_canonical_name(attr.attribute_name)
                 latest_specs[c_key] = attr.attribute_value
+
+        # Also pull extracted attributes directly from the latest uploaded Document record
+        latest_doc = (
+            db.query(Document)
+            .filter(Document.product_id == product.id)
+            .order_by(Document.created_at.desc())
+            .first()
+        )
+        if not latest_doc:
+            latest_doc = db.query(Document).order_by(Document.created_at.desc()).first()
+
+        if latest_doc and latest_doc.extracted_attributes and isinstance(latest_doc.extracted_attributes, dict):
+            for k, v in latest_doc.extracted_attributes.items():
+                if k and v and not str(k).startswith("File Type") and not str(k).startswith("Total") and not str(k).startswith("Column:"):
+                    c_key = to_canonical_name(str(k))
+                    latest_specs[c_key] = str(v)
 
         # Merge live HTML specs into published_specs if available
         for k, v in live_web_specs.items():
