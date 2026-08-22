@@ -126,6 +126,8 @@ export default function UploadIngestPage() {
     return <GenericFileIcon className="w-4 h-4 text-slate-500" />;
   };
 
+  const safeFallbackDocs = Array.isArray(fallbackDocs) ? fallbackDocs : [];
+
   // Fetch real documents from FastAPI backend
   const fetchUploadedDocuments = async () => {
     setLoadingDocs(true);
@@ -142,13 +144,13 @@ export default function UploadIngestPage() {
         setDbDocuments(res.items);
         setTotalDocsCount(res.total || res.items.length);
       } else {
-        setDbDocuments(fallbackDocs);
-        setTotalDocsCount(fallbackDocs.length);
+        setDbDocuments(safeFallbackDocs);
+        setTotalDocsCount(safeFallbackDocs.length);
       }
     } catch (err: any) {
       console.warn('Backend documents fetch failed, using fallback:', err);
-      setDbDocuments(fallbackDocs);
-      setTotalDocsCount(fallbackDocs.length);
+      setDbDocuments(safeFallbackDocs);
+      setTotalDocsCount(safeFallbackDocs.length);
     } finally {
       setLoadingDocs(false);
     }
@@ -369,7 +371,7 @@ COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,
   };
 
   const totalPages = Math.ceil(totalDocsCount / pageSize) || 1;
-  const displayDocs = dbDocuments;
+  const displayDocs = (dbDocuments && dbDocuments.length > 0) ? dbDocuments : safeFallbackDocs;
 
   return (
     <div className="space-y-6">
