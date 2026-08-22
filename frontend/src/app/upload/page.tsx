@@ -293,84 +293,81 @@ export default function UploadIngestPage() {
     }
   };
 
-  // Quick Test Trigger Helper for multi-formats
+  // Quick Test Trigger Helper for the four official test CSV datasets
   const handleQuickDemoUpload = (sampleName: string) => {
-    const ext = '.' + (sampleName.split('.').pop() || '').toLowerCase();
-    let mime = 'application/octet-stream';
-    if (ext === '.pdf') mime = 'application/pdf';
-    else if (ext === '.xlsx') mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    else if (ext === '.csv') mime = 'text/csv';
-    else if (ext === '.png') mime = 'image/png';
-    else if (ext === '.jpg') mime = 'image/jpeg';
-    else if (ext === '.docx') mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
     let dummyContent = '';
-    if (sampleName.includes('technical_spec')) {
-      dummyContent = `INDUSTRIAL TECHNICAL SPECIFICATION SHEET
-Manufacturer: Nova Industrial Systems
-Model Identifier: NX-450
-Product Name: High Efficiency 3-Phase Industrial Electric Motor
-Product Category: Electric Motors & Drives
 
-SPECIFICATIONS:
-Rated Power: 7.5 kW (Output Power: 10 HP)
-Rated Voltage: 415 V / 50 Hz
-Rated Current: 14.2 A
-Synchronous Speed: 1460 RPM
-Power Factor: 0.86
-Frame Size: 132M
-Enclosure Protection: IP55 TEFC
-Insulation Class: Class F (155°C)
-Full Load Efficiency: IE3 (91.4%)
-Duty Cycle: S1 Continuous
-Ambient Temperature: -20°C to +60°C
-Unit Weight: 48 kg
-Safety Standard: IEC 60034-1 Electric Motor Safety Standard
-Hazardous Area Rating: ATEX Directive 2014/34/EU (Zone 2)
-Environmental Compliance: RoHS 3 Directive (2015/863)
+    if (sampleName.includes('GB-100_v3') || sampleName.includes('GB-100_v3_Revision')) {
+      dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
+GB-100,Coaxial Helical Gearbox H100,Gearboxes,3,1 kW,,,,Foot Mount,,,2000 RPM,12:1,78%,144 RPM,320 Nm,Cast Iron,Synthetic ISO VG 220,18 kg,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,25480,INR,20,5,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,19-08-2026
 `;
-    } else if (sampleName.includes('csv') || sampleName.includes('inventory')) {
-      dummyContent = `ID,Name,Category,Rated Power,Rated Voltage,Synchronous Speed,Enclosure Protection,Ambient Temperature,Safety Standard,ATEX Rating,RoHS Status
-NX-450,Nova High Efficiency Motor,Electric Motors,7.5 kW,415 V,1460 RPM,IP55,-20°C to +60°C,IEC 60034-1,ATEX Zone 2,RoHS 3 Compliant
-V-100,VFD Controller Drive,Automation,15.0 kW,415 V,2900 RPM,IP65,-10°C to +50°C,IEC 61800-5-1,Non-Hazardous,RoHS 3 Compliant
+    } else if (sampleName.includes('C105') || sampleName.includes('Controller')) {
+      dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
+C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,76440.0,INR,18,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,81900.0,INR,14,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,72540.0,INR,10,9,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
 `;
-    } else if (sampleName.includes('catalog')) {
-      dummyContent = `SUPPLIER CATALOGUE & SPECIFICATION MATRIX
-Manufacturer: ABB Industrial Automation
-Model: VTX-550 Variable Speed AC Drive
-Rated Power: 15.0 kW
-Input Voltage: 380-480 V (3-Phase)
-Output Current: 32.0 A
-Enclosure: IP66 Heavy Duty NEMA 4X
-Efficiency: 97.8%
-Cooling Method: Forced Air Cooling
-Compliance: CE, UL 508C, RoHS 3 Compliant
-`;
-    } else if (sampleName.includes('nameplate') || sampleName.includes('photo')) {
-      dummyContent = `NAMEPLATE OCR EXTRACTED TEXT:
-Siemens 1LE1001-1DB23-4FA4
-3~ Mot. 132M IP55 48kg
-50 Hz 7.5 kW 415V 14.5A
-1465 /min cos 0.85 IE3-90.4%
-IEC/EN 60034-1 Ex ec IIC T3 Gc
-ATEX 2014/34/EU RoHS 3 COMPLIANT
+    } else if (sampleName.includes('Valves') || sampleName.includes('Compressors')) {
+      dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
+V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,14210.0,INR,25,4,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,15225.0,INR,19,5,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,13485.0,INR,14,6,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,161700.0,INR,10,8,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
 `;
     } else {
-      dummyContent = `PRODUCT USER MANUAL & REGULATORY DECLARATION
-Manufacturer: InduCore Equipment
-Model: GB-100 Industrial Gearbox
-Gear Ratio: 12:1
-Rated Torque: 300 Nm
-Input Speed: 1440 RPM
-Efficiency: 96.5%
-Protection Class: IP65
-Operating Temperature: -30°C to +70°C
-Compliance: ISO 9001, IEC 60034, ATEX Zone 22, RoHS 3
+      dummyContent = `ID,Name,Category,Version,Power,Voltage,Current,IP Rating,Mount,Communication,Temp,Speed,Ratio,Efficiency,Output Speed,Torque,Housing / Material,Lubricant,Weight,Size,Connection,Pressure,Flow (Cv),Material,Media,Actuator,Flow Rate,Max Pressure,Tank Volume,Cooling,Noise,Supplier ID,Supplier Name,Supplier Status,Unit Price (INR),Currency,Stock Qty,Delivery Days,MOQ,Warranty (Months),Quote Validity (Days),Payment Terms,Incoterms,Offer Status,Supplier Data Source,Commercial Data Last Updated
+C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,76440.0,INR,18,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,81900.0,INR,14,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+C-105,Rugged NEMA 4X / IP65 Outdoor VFD,Controllers,1,7.5 kW,380-415 V AC,16.5 A,IP65 (NEMA 4X),Wall Mount Outdoor,Profinet / Modbus RTU,-20°C to +55°C,,,,,,,,,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,72540.0,INR,10,9,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-100,Coaxial Helical Gearbox H100,Gearboxes,1,4 kW,,,,Foot Mount,,,1440 RPM,10:1,96%,144 RPM,250 Nm,Cast Iron,Synthetic ISO VG 220,18 kg,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,25480.0,INR,20,5,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-100,Coaxial Helical Gearbox H100,Gearboxes,1,4 kW,,,,Foot Mount,,,1440 RPM,10:1,96%,144 RPM,250 Nm,Cast Iron,Synthetic ISO VG 220,18 kg,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,27300.0,INR,15,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-100,Coaxial Helical Gearbox H100,Gearboxes,1,4 kW,,,,Foot Mount,,,1440 RPM,10:1,96%,144 RPM,250 Nm,Cast Iron,Synthetic ISO VG 220,18 kg,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,24180.0,INR,11,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-101,Medium Coaxial Helical Gearbox H101,Gearboxes,1,7.5 kW,,,,Foot / Flange,,,1440 RPM,20:1,95%,72 RPM,580 Nm,Cast Iron,Synthetic ISO VG 320,34 kg,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,25480.0,INR,20,5,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-101,Medium Coaxial Helical Gearbox H101,Gearboxes,1,7.5 kW,,,,Foot / Flange,,,1440 RPM,20:1,95%,72 RPM,580 Nm,Cast Iron,Synthetic ISO VG 320,34 kg,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,27300.0,INR,15,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-101,Medium Coaxial Helical Gearbox H101,Gearboxes,1,7.5 kW,,,,Foot / Flange,,,1440 RPM,20:1,95%,72 RPM,580 Nm,Cast Iron,Synthetic ISO VG 320,34 kg,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,24180.0,INR,11,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-102,Right-Angle Worm Gearbox,Gearboxes,1,3 kW,,,,Shaft Mounted Hollow,,,1440 RPM,40:1,88%,36 RPM,320 Nm,Die-Cast Aluminum,PG 460,14 kg,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,25480.0,INR,20,5,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-102,Right-Angle Worm Gearbox,Gearboxes,1,3 kW,,,,Shaft Mounted Hollow,,,1440 RPM,40:1,88%,36 RPM,320 Nm,Die-Cast Aluminum,PG 460,14 kg,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,27300.0,INR,15,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-102,Right-Angle Worm Gearbox,Gearboxes,1,3 kW,,,,Shaft Mounted Hollow,,,1440 RPM,40:1,88%,36 RPM,320 Nm,Die-Cast Aluminum,PG 460,14 kg,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,24180.0,INR,11,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-103,Heavy-Duty Planetary Gearbox,Gearboxes,1,15 kW,,,,Flange Mount B14,,,1440 RPM,60:1,94%,24 RPM,1800 Nm,Graphite Cast Iron,ISO VG 220,92 kg,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,25480.0,INR,20,5,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-103,Heavy-Duty Planetary Gearbox,Gearboxes,1,15 kW,,,,Flange Mount B14,,,1440 RPM,60:1,94%,24 RPM,1800 Nm,Graphite Cast Iron,ISO VG 220,92 kg,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,27300.0,INR,15,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-103,Heavy-Duty Planetary Gearbox,Gearboxes,1,15 kW,,,,Flange Mount B14,,,1440 RPM,60:1,94%,24 RPM,1800 Nm,Graphite Cast Iron,ISO VG 220,92 kg,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,24180.0,INR,11,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-104,Compact Helical-Bevel Gearbox,Gearboxes,1,2.2 kW,,,,Foot / Flange,,,1440 RPM,5:1,96%,288 RPM,120 Nm,Die-Cast Aluminum,ISO VG 150,11 kg,,,,,,,,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,25480.0,INR,20,5,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-104,Compact Helical-Bevel Gearbox,Gearboxes,1,2.2 kW,,,,Foot / Flange,,,1440 RPM,5:1,96%,288 RPM,120 Nm,Die-Cast Aluminum,ISO VG 150,11 kg,,,,,,,,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,27300.0,INR,15,6,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+GB-104,Compact Helical-Bevel Gearbox,Gearboxes,1,2.2 kW,,,,Foot / Flange,,,1440 RPM,5:1,96%,288 RPM,120 Nm,Die-Cast Aluminum,ISO VG 150,11 kg,,,,,,,,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,24180.0,INR,11,7,1,24,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,14210.0,INR,25,4,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,15225.0,INR,19,5,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-100,High-Performance Stainless Ball Valve,Valves,2,,,,,,,-20°C to +180°C,,,,,,,,,DN50 (2 Inch),Flanged RF,16 bar (PN16),240.0,Stainless Steel 316,"Water, Chemicals, Mild Solvents",Manual Handle,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,13485.0,INR,14,6,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-101,High-Pressure Cast Steel Gate Valve,Valves,1,,,,,,,-29°C to +425°C,,,,,,,,,DN80 (3 Inch),Flanged RF PN40,PN40,580.0,Carbon Steel WCB,"Steam, Water, Oil",Handwheel,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,14210.0,INR,25,4,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-101,High-Pressure Cast Steel Gate Valve,Valves,1,,,,,,,-29°C to +425°C,,,,,,,,,DN80 (3 Inch),Flanged RF PN40,PN40,580.0,Carbon Steel WCB,"Steam, Water, Oil",Handwheel,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,15225.0,INR,19,5,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-101,High-Pressure Cast Steel Gate Valve,Valves,1,,,,,,,-29°C to +425°C,,,,,,,,,DN80 (3 Inch),Flanged RF PN40,PN40,580.0,Carbon Steel WCB,"Steam, Water, Oil",Handwheel,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,13485.0,INR,14,6,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-102,Pneumatic Actuated Butterfly Valve,Valves,1,,,,,,,-10°C to +110°C,,,,,,,,,DN100 (4 Inch),Wafer (Bolted),PN10 / PN16,620.0,Ductile Iron GGG40,"Water, Waste Slurry, Low Air",Pneumatic Double-Acting,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,14210.0,INR,25,4,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-102,Pneumatic Actuated Butterfly Valve,Valves,1,,,,,,,-10°C to +110°C,,,,,,,,,DN100 (4 Inch),Wafer (Bolted),PN10 / PN16,620.0,Ductile Iron GGG40,"Water, Waste Slurry, Low Air",Pneumatic Double-Acting,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,15225.0,INR,19,5,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-102,Pneumatic Actuated Butterfly Valve,Valves,1,,,,,,,-10°C to +110°C,,,,,,,,,DN100 (4 Inch),Wafer (Bolted),PN10 / PN16,620.0,Ductile Iron GGG40,"Water, Waste Slurry, Low Air",Pneumatic Double-Acting,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,13485.0,INR,14,6,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-103,Sanitary Threaded Globe Valve,Valves,1,,,,,,,-20°C to +150°C,,,,,,,,,DN25 (1 Inch),Threaded NPT / Tri-Clamp,PN16,18.0,Stainless Steel 316L,"Food Juices, Sanitizers, Pure Steam",Manual / Digital,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,14210.0,INR,25,4,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-103,Sanitary Threaded Globe Valve,Valves,1,,,,,,,-20°C to +150°C,,,,,,,,,DN25 (1 Inch),Threaded NPT / Tri-Clamp,PN16,18.0,Stainless Steel 316L,"Food Juices, Sanitizers, Pure Steam",Manual / Digital,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,15225.0,INR,19,5,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-103,Sanitary Threaded Globe Valve,Valves,1,,,,,,,-20°C to +150°C,,,,,,,,,DN25 (1 Inch),Threaded NPT / Tri-Clamp,PN16,18.0,Stainless Steel 316L,"Food Juices, Sanitizers, Pure Steam",Manual / Digital,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,13485.0,INR,14,6,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-104,Dual Plate Non-Return Check Valve,Valves,1,,,,,,,-20°C to +200°C,,,,,,,,,DN80 (3 Inch),Wafer (Standard),PN16,310.0,Stainless Steel 316,"Water, Chemical Solvents, Oil",Spring-Assisted,,,,,,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,14210.0,INR,25,4,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-104,Dual Plate Non-Return Check Valve,Valves,1,,,,,,,-20°C to +200°C,,,,,,,,,DN80 (3 Inch),Wafer (Standard),PN16,310.0,Stainless Steel 316,"Water, Chemical Solvents, Oil",Spring-Assisted,,,,,,SUP-NOVA,Nova Industrial Systems,APPROVED,15225.0,INR,19,5,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+V-104,Dual Plate Non-Return Check Valve,Valves,1,,,,,,,-20°C to +200°C,,,,,,,,,DN80 (3 Inch),Wafer (Standard),PN16,310.0,Stainless Steel 316,"Water, Chemical Solvents, Oil",Spring-Assisted,,,,,,SUP-PRIME,Prime Engineering Traders,APPROVED,13485.0,INR,14,6,2,18,30,Net 30,EXW,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,161700.0,INR,10,8,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-100,Heavy-Duty Reciprocating Air Compressor,Compressors,1,5.5 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-101,High-Capacity Rotary Screw Compressor,Compressors,1,22 kW,415 V,,,,,,2900 RPM,,,,,,480 kg,,,,,,,,3000 L/min,13 bar,Tankless,Oil Injected / Air Cooler,68 dB(A),,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,161700.0,INR,10,8,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-101,High-Capacity Rotary Screw Compressor,Compressors,1,22 kW,415 V,,,,,,2900 RPM,,,,,,480 kg,,,,,,,,3000 L/min,13 bar,Tankless,Oil Injected / Air Cooler,68 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-101,High-Capacity Rotary Screw Compressor,Compressors,1,22 kW,415 V,,,,,,2900 RPM,,,,,,480 kg,,,,,,,,3000 L/min,13 bar,Tankless,Oil Injected / Air Cooler,68 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-102,Silent Rotary Scroll Compressor,Compressors,1,7.5 kW,415 V,,,,,,2900 RPM,,,,,,145 kg,,,,,,,,800 L/min,8 bar,200 L,Forced Air Cooled,62 dB(A),,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,161700.0,INR,10,8,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-102,Silent Rotary Scroll Compressor,Compressors,1,7.5 kW,415 V,,,,,,2900 RPM,,,,,,145 kg,,,,,,,,800 L/min,8 bar,200 L,Forced Air Cooled,62 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-102,Silent Rotary Scroll Compressor,Compressors,1,7.5 kW,415 V,,,,,,2900 RPM,,,,,,145 kg,,,,,,,,800 L/min,8 bar,200 L,Forced Air Cooled,62 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,290 kg,,,,,,,,1200 L/min,10 bar,500 L,Air Cooled,78 dB(A),,SUP-ALPHA,Alpha Industrial Supplies,APPROVED,161700.0,INR,10,8,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-NOVA,Nova Industrial Systems,APPROVED,173250.0,INR,8,10,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
+COMP-103,Portable Site Air Compressor,Compressors,1,11 kW,415 V,,,,,,1440 RPM,,,,,,165 kg,,,,,,,,600 L/min,10 bar,270 L,Air Cooled,75 dB(A),,SUP-PRIME,Prime Engineering Traders,APPROVED,153450.0,INR,6,12,1,24,21,Net 30,DAP,ACTIVE,SYNTHETIC_DEMO,2026-08-19
 `;
     }
 
-    const blob = new Blob([dummyContent], { type: mime });
-    const file = new File([blob], sampleName, { type: mime });
+    const blob = new Blob([dummyContent], { type: 'text/csv' });
+    const file = new File([blob], sampleName, { type: 'text/csv' });
     stageFile(file);
   };
 
@@ -479,60 +476,50 @@ Compliance: ISO 9001, IEC 60034, ATEX Zone 22, RoHS 3
             <span>Maximum file size: <strong className="text-slate-700">50 MB</strong></span>
           </div>
 
-          {/* Quick Test Multi-Format Pills */}
+          {/* Quick Test Official Dataset Pills */}
           <div className="mt-5 pt-5 border-t border-slate-200/80" onClick={e => e.stopPropagation()}>
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
-              ⚡ Quick Multi-Format Test Files (Click to stage for upload)
+              ⚡ Official Test Datasets (Click to stage for upload)
             </span>
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={() => handleQuickDemoUpload('technical_spec_2026.pdf')}
-                disabled={isUploading}
-                className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>PDF: technical_spec_2026.pdf</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoUpload('supplier_catalog_abb.xlsx')}
+                onClick={() => handleQuickDemoUpload('GB-100_v3_Revision.csv')}
                 disabled={isUploading}
                 className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Excel: supplier_catalog.xlsx</span>
+                <span>CSV 1: GB-100_v3_Revision.csv</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleQuickDemoUpload('motor_inventory_rate_sheet.csv')}
-                disabled={isUploading}
-                className="px-3 py-1.5 bg-white hover:bg-teal-50 text-teal-700 border border-teal-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>CSV: motor_inventory.csv</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoUpload('motor_nameplate_photo.jpg')}
-                disabled={isUploading}
-                className="px-3 py-1.5 bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
-              >
-                <ImageIcon className="w-3.5 h-3.5" />
-                <span>JPG: nameplate_photo.jpg</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoUpload('product_user_manual.docx')}
+                onClick={() => handleQuickDemoUpload('Master_Industrial_Equipment_Catalog.csv')}
                 disabled={isUploading}
                 className="px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
               >
-                <FileCode className="w-3.5 h-3.5" />
-                <span>DOCX: product_manual.docx</span>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>CSV 2: Master_Industrial_Catalog.csv</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemoUpload('VFD_Outdoor_Controller_C105.csv')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>CSV 3: VFD_Controller_C105.csv</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDemoUpload('Valves_And_Compressors_Datasheet.csv')}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>CSV 4: Valves_Compressors.csv</span>
               </button>
             </div>
           </div>
