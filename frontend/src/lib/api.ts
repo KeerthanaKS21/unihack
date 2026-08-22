@@ -106,6 +106,21 @@ export const api = {
       method: 'DELETE',
     }),
 
+  extractProductFromDocument: (docId: number) =>
+    request<any>(`/documents/${docId}/extract`, {
+      method: 'POST',
+    }),
+
+  identifyProduct: (docId: number) =>
+    request<any>(`/documents/${docId}/identify-product`, {
+      method: 'POST',
+    }),
+
+  detectVersion: (docId: number) =>
+    request<any>(`/documents/${docId}/detect-version`, {
+      method: 'POST',
+    }),
+
   // Products
   getProducts: (params?: {
     page?: number;
