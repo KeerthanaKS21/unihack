@@ -18,6 +18,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import Link from 'next/link';
+import { api } from '@/lib/api';
 
 export default function StorefrontCatalogPage() {
   const [products, setProducts] = useState<any[]>([]);

@@ -15,6 +15,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
+import { api } from '@/lib/api';
 
 export default function StorefrontProductPage({ params }: { params: { slug: string } }) {
   const [productData, setProductData] = useState<any | null>(null);
