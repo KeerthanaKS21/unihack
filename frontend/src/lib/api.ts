@@ -20,8 +20,6 @@ const getBaseUrl = () => {
   return 'http://localhost:8000/api';
 };
 
-const API_BASE_URL = getBaseUrl();
-
 export interface ApiErrorResponse {
   detail: string;
   status: number;
@@ -37,7 +35,8 @@ export class ApiClientError extends Error {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const baseUrl = getBaseUrl();
+  const url = `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
   
   try {
     const response = await fetch(url, {
