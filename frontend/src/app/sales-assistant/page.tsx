@@ -80,38 +80,38 @@ export default function SalesAssistantPage() {
 
   const samplePrompts = [
     {
-      label: '⚡ Tell me about XYZ-450 specs',
-      text: 'Tell me about the XYZ-450 motor specifications and its recent version update.',
+      label: '⚡ NexusGuard NX-450 Specs & Update',
+      text: 'Tell me about the NexusGuard NX-450 motor specifications and its recent v2.0 rated power upgrade.',
       category: 'Product'
     },
     {
-      label: '🚚 Find equivalent 7.5 kW motors',
-      text: 'Find equivalent 7.5 kW 415V IP55 motors across all suppliers.',
+      label: '🚚 Compare 7.5 kW Motors across Suppliers',
+      text: 'Find equivalent 7.5 kW 415V IP55 motors across Alpha, Nova, and Prime suppliers with unit pricing.',
       category: 'Procurement'
     },
     {
-      label: '📄 Prepare quote for 20 units',
-      text: 'Prepare an automated quotation for 20 units of XYZ-450.',
+      label: '📄 Prepare Quote for 20x NexusGuard NX-450',
+      text: 'Prepare a commercial quotation for 20 units of NIS-NX450-415 NexusGuard NX-450 Industrial Motor.',
       category: 'Quotation'
     },
     {
-      label: '⚙️ Check Pump P-200 compatibility',
-      text: 'Which motors and couplings are compatible with Pump P-200?',
+      label: '⚙️ Check DriveMax D550 & GB-100 Compatibility',
+      text: 'Is DriveMax D550 Controller compatible with NexusGuard NX-450 Motor and GB-100 Gearbox?',
       category: 'Compatibility'
     },
     {
-      label: '🛡️ Audit CE & ATEX compliance',
-      text: 'Does XYZ-450 have valid CE and ATEX compliance certificates?',
+      label: '🛡️ Audit IEC 60034-1 & RoHS Compliance',
+      text: 'Does NexusGuard NX-450 comply with IEC 60034-1 and RoHS environmental standards?',
       category: 'Compliance'
     },
     {
-      label: '🔄 What changed in latest datasheet?',
-      text: 'What changed in the latest datasheet for XYZ-450?',
+      label: '🔄 What changed in NexusGuard NX-450 v2.0?',
+      text: 'What changed between version 1.0 and version 2.0 of NexusGuard NX-450 Industrial Motor?',
       category: 'Change Delta'
     },
     {
       label: '⚠️ Test Missing Data (Zero-Hallucination)',
-      text: 'What is the acoustic noise level in dBA for XYZ-450?',
+      text: 'What is the exact acoustic noise level in dBA for NexusGuard NX-450?',
       category: 'Guardrails'
     }
   ];

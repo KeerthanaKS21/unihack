@@ -154,38 +154,38 @@ export const Sidebar: React.FC = () => {
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-40 w-64 bg-[#0B0F17] text-slate-300 border-r border-slate-800/80 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed top-0 bottom-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 border-r border-slate-800 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Brand Header */}
-        <div className="p-4 border-b border-slate-800/80 flex items-center gap-3 bg-slate-950/40">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/25 ring-1 ring-white/20">
+        <div className="p-4 border-b border-slate-800/90 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
             <Layers className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm tracking-tight text-white font-sans">
+              <span className="font-bold text-sm tracking-tight text-white">
                 VeriSpec AI
               </span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-500/15 text-blue-400 border border-blue-500/30 rounded-md tracking-wider">
+              <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded">
                 ENTERPRISE
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 leading-none mt-1 font-medium">
-              Product Intelligence Platform
+            <p className="text-[11px] text-slate-400 leading-none mt-1">
+              Industrial Product Intelligence
             </p>
           </div>
         </div>
 
         {/* Navigation List */}
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+        <div className="flex-1 overflow-y-auto py-3 px-2 space-y-5">
           {sections.map(sectionName => (
             <div key={sectionName}>
-              <div className="px-2 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
+              <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 {sectionName}
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {navItems
                   .filter(item => item.section === sectionName)
                   .map(item => {
@@ -197,10 +197,10 @@ export const Sidebar: React.FC = () => {
                         key={item.href}
                         href={item.href}
                         onClick={() => setMobileOpen(false)}
-                        className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 ${
+                        className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                           isActive
-                            ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold shadow-sm border border-blue-500/40'
-                            : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                            ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -218,7 +218,7 @@ export const Sidebar: React.FC = () => {
 
                         <div className="flex items-center gap-1.5 shrink-0">
                           {item.highlightDot && (
-                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shadow-xs shadow-rose-500/50" />
+                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                           )}
                           {item.badge && (
                             <span
@@ -226,10 +226,10 @@ export const Sidebar: React.FC = () => {
                                 isActive
                                   ? 'bg-white/20 text-white'
                                   : item.badgeColor === 'rose'
-                                  ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                                   : item.badgeColor === 'purple'
-                                  ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
-                                  : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                               }`}
                             >
                               {item.badge}
@@ -248,16 +248,16 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-3 border-t border-slate-800/80 bg-[#070A0F]">
-          <div className="bg-slate-900/80 rounded-xl p-3 border border-slate-800 text-xs shadow-inner">
+        <div className="p-3 border-t border-slate-800 bg-slate-950/50">
+          <div className="bg-slate-900 rounded-lg p-2.5 border border-slate-800 text-xs">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-[11px] font-medium text-slate-300">Live Active SKU</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
-                v2.0 LIVE
+              <span className="text-[11px] font-medium">Primary Demo SKU</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
+                v2.0
               </span>
             </div>
-            <div className="mt-1.5 font-bold text-white text-xs truncate">
-              NIS-NX450-415 (Nova Motor)
+            <div className="mt-1 font-semibold text-white text-xs truncate">
+              XYZ-450 (Siemens)
             </div>
             <p className="text-[10px] text-slate-400 mt-0.5">
               Power upgraded: 5.5 kW → 7.5 kW

@@ -29,10 +29,11 @@ export default function AskCatalogPage() {
   };
 
   const explorationPrompts = [
-    { label: 'Where did the 415 V rating come from?', text: 'Where did the 415 V rating for XYZ-450 come from, and why is there a conflict with the web storefront?' },
-    { label: 'Which products are certified for IP55?', text: 'Which products in the catalog have certified IP55 protection rating?' },
-    { label: 'What changed between v1 and v2?', text: 'What changed between version 1.4 and version 2.0 for XYZ-450?' },
-    { label: 'What standards does XYZ-450 comply with?', text: 'What standards and certifications are verified for XYZ-450?' }
+    { label: 'Where did the 7.5 kW & 415 V ratings for NexusGuard NX-450 come from?', text: 'Where did the 7.5 kW rated power and 415 V voltage rating for NexusGuard NX-450 come from, and what source document verifies this?' },
+    { label: 'Which products in the test files are certified for IP55 or IP65?', text: 'Which products in the ingested datasheets have certified IP55 or IP65 protection ratings?' },
+    { label: 'What changed between v1.0 and v2.0 for NexusGuard NX-450?', text: 'What exact specification changes occurred between version 1.0 and version 2.0 of NexusGuard NX-450?' },
+    { label: 'What standards & certifications does NexusGuard NX-450 comply with?', text: 'What standards and certifications (e.g. IEC 60034-1, RoHS) are verified in the NexusGuard NX-450 datasheet?' },
+    { label: 'What are the ratio and output torque specs for GB-100 & GB-101?', text: 'What are the gear ratio, output speed, and torque specifications for GB-100 and GB-101 coaxial helical gearboxes?' }
   ];
 
   return (
