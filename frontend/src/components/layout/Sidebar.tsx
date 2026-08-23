@@ -189,7 +189,7 @@ export const Sidebar: React.FC = () => {
                 {navItems
                   .filter(item => item.section === sectionName)
                   .map(item => {
-                    const isActive = pathname === item.href || (item.href === '/dashboard' && pathname === '/');
+                    const isActive = pathname === item.href || (item.href === '/dashboard' && (pathname === '/' || pathname === '/dashboard'));
                     const Icon = item.icon;
 
                     return (
