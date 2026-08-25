@@ -13,29 +13,21 @@ from fastapi.staticfiles import StaticFiles
 import logging
 from app.core.config import settings
 from app.db.database import engine, Base
-from app.routes import api_router
+from app.routes import api_router, root_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("product_intelligence")
 
-# Ensure database tables exist at startup
-Base.metadata.create_all(bind=engine)
+# Ensure database tables exist at startup (handled safely in SQLite)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as db_err:
+    logger.warning(f"Database table creation check: {db_err}")
 
 app = FastAPI(
     title="VeriSpec AI | Industrial Product Intelligence Platform",
-    description=(
-        "Backend REST API for AI-Powered Product Intelligence for Industrial Commerce.\n\n"
-        "Features:\n"
-        "- Document Upload & Multi-Format Storage\n"
-        "- Product & Historical Version Specification Management\n"
-        "- Specification Change Detection & Multi-Domain Impact Review\n"
-        "- Real-time Catalog Health Metrics & 1-Click Issue Resolution\n"
-        "- Procurement Supplier Matrix & Parametric Sourcing\n"
-        "- Compliance & Standard Auditing (CE, RoHS, ATEX)\n"
-        "- Technical Drivetrain Compatibility Verification\n"
-        "- Industrial Quote Automation & Revision Lifecycle\n"
-    ),
+    description="Backend REST API for AI-Powered Product Intelligence for Industrial Commerce.",
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -57,12 +49,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount uploads folder for static asset retrieval
+# Mount uploads folder for static asset retrieval (if directory exists)
 if os.path.exists(settings.UPLOAD_DIR):
-    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+    try:
+        app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+    except Exception:
+        pass
 
-# Include Core API Router
+# Include Core API Routers (both /api prefix and root for Vercel serverless rewrite compatibility)
 app.include_router(api_router)
+app.include_router(root_router)
 
 @app.get("/health", tags=["Health"])
 def health_check():

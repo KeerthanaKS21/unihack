@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     )
 
     def get_database_url(self) -> str:
+        # If running on Vercel Serverless environment, use /tmp for SQLite database to prevent Read-only file system errors
+        if os.environ.get("VERCEL") or "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
+            return "sqlite:////tmp/product_intelligence.db"
+
         if self.DATABASE_URL.startswith("sqlite:///") and not self.DATABASE_URL.startswith("sqlite:////"):
             rel_path = self.DATABASE_URL.replace("sqlite:///", "").lstrip("./")
             abs_path = (BASE_DIR / rel_path).resolve().as_posix()
@@ -58,5 +62,12 @@ class Settings(BaseSettings):
 settings = Settings()
 settings.DATABASE_URL = settings.get_database_url()
 
-# Ensure uploads directory exists
-os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+# On Vercel serverless functions, write uploads to /tmp/uploads
+if os.environ.get("VERCEL") or "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
+    settings.UPLOAD_DIR = "/tmp/uploads"
+
+# Safe creation of uploads directory (prevents crash on read-only environments)
+try:
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+except Exception:
+    pass

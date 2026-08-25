@@ -18,23 +18,30 @@ from app.routes.procurement import router as procurement_router
 from app.routes.sales_assistant import router as sales_assistant_router
 
 api_router = APIRouter(prefix="/api")
+root_router = APIRouter()
 
-api_router.include_router(dashboard_router)
-api_router.include_router(documents_router)
-api_router.include_router(products_router)
-api_router.include_router(product_versions_router)
-api_router.include_router(changes_router)
-api_router.include_router(change_impacts_router)
-api_router.include_router(catalog_health_router)
-api_router.include_router(catalog_issues_router)
-api_router.include_router(suppliers_router)
-api_router.include_router(certificates_router)
-api_router.include_router(compliance_router)
-api_router.include_router(compatibility_router)
-api_router.include_router(quotes_router)
-api_router.include_router(catalog_ai_router)
-api_router.include_router(ecommerce_router)
-api_router.include_router(procurement_router)
-api_router.include_router(sales_assistant_router)
+routers = [
+    dashboard_router,
+    documents_router,
+    products_router,
+    product_versions_router,
+    changes_router,
+    change_impacts_router,
+    catalog_health_router,
+    catalog_issues_router,
+    suppliers_router,
+    certificates_router,
+    compliance_router,
+    compatibility_router,
+    quotes_router,
+    catalog_ai_router,
+    ecommerce_router,
+    procurement_router,
+    sales_assistant_router,
+]
 
-__all__ = ["api_router"]
+for r in routers:
+    api_router.include_router(r)
+    root_router.include_router(r)
+
+__all__ = ["api_router", "root_router"]
