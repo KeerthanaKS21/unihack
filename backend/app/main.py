@@ -11,24 +11,25 @@ for d in [root_dir, backend_dir, app_dir]:
     if d and os.path.exists(d) and d not in sys.path:
         sys.path.insert(0, d)
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 from app.core.config import settings
-from app.db.database import engine, Base
+from app.db.database import engine, Base, init_db
 from app.routes import api_router, root_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("product_intelligence")
 
-# Ensure database tables exist at startup (handled safely in SQLite)
+# Ensure database tables exist at startup with all registered models
 try:
-    Base.metadata.create_all(bind=engine)
+    init_db()
 except Exception as db_err:
-    logger.warning(f"Database table creation check: {db_err}")
+    logger.warning(f"Database table initialization check: {db_err}")
 
 app = FastAPI(
     title="VeriSpec AI | Industrial Product Intelligence Platform",
@@ -82,11 +83,25 @@ def root():
         "health": "/health"
     }
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors()}
+    )
+
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global exception on {request.url}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An unexpected server error occurred. Check backend logs for details."}
+        content={"detail": f"Backend Error: {str(exc)}"}
     )

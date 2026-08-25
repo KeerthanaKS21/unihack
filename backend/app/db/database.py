@@ -29,10 +29,23 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+_tables_initialized = False
+
+def init_db():
+    global _tables_initialized
+    if not _tables_initialized:
+        try:
+            import app.db.models  # noqa: F401 - Register all models with Base.metadata
+            Base.metadata.create_all(bind=engine)
+            _tables_initialized = True
+        except Exception as e:
+            logger.warning(f"Database table initialization warning: {e}")
+
 def get_db() -> Generator[Session, None, None]:
     """
     FastAPI dependency for yielding database session with automatic cleanup and rollback on exception.
     """
+    init_db()
     db = SessionLocal()
     try:
         yield db

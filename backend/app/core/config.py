@@ -49,7 +49,20 @@ class Settings(BaseSettings):
     )
 
     def get_database_url(self) -> str:
-        # If running on Vercel Serverless environment, use /tmp for SQLite database to prevent Read-only file system errors
+        # Check environment variables for remote production database
+        env_db = (
+            os.environ.get("POSTGRES_URL") or 
+            os.environ.get("DATABASE_URL") or 
+            os.environ.get("VERCEL_POSTGRES_URL") or
+            os.environ.get("NEON_DATABASE_URL") or
+            os.environ.get("SUPABASE_DATABASE_URL")
+        )
+        if env_db:
+            if env_db.startswith("postgres://"):
+                env_db = env_db.replace("postgres://", "postgresql://", 1)
+            return env_db
+
+        # If running on Vercel Serverless environment without remote DB, use /tmp for SQLite database
         if os.environ.get("VERCEL") or "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
             return "sqlite:////tmp/product_intelligence.db"
 
