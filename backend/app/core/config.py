@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     )
 
     def get_database_url(self) -> str:
-        # Check environment variables for remote production database
+        # Check environment variables for production database
         env_db = (
             os.environ.get("POSTGRES_URL") or 
             os.environ.get("DATABASE_URL") or 
@@ -57,14 +57,33 @@ class Settings(BaseSettings):
             os.environ.get("NEON_DATABASE_URL") or
             os.environ.get("SUPABASE_DATABASE_URL")
         )
-        if env_db:
+        is_production = (
+            bool(os.environ.get("VERCEL")) or 
+            os.environ.get("APP_ENV") == "production" or 
+            "AWS_LAMBDA_FUNCTION_NAME" in os.environ
+        )
+
+        if is_production:
+            if not env_db:
+                raise RuntimeError(
+                    "CRITICAL CONFIGURATION ERROR: Production environment detected (VERCEL/APP_ENV=production), "
+                    "but no production PostgreSQL database URL was provided. "
+                    "Please set DATABASE_URL or POSTGRES_URL in Vercel Environment Variables."
+                )
+            if not (env_db.startswith("postgresql://") or env_db.startswith("postgres://")):
+                raise RuntimeError(
+                    f"CRITICAL CONFIGURATION ERROR: Production must use a PostgreSQL database. "
+                    f"Provided DATABASE_URL is invalid: '{env_db[:15]}...' (must start with postgresql:// or postgres://)."
+                )
             if env_db.startswith("postgres://"):
                 env_db = env_db.replace("postgres://", "postgresql://", 1)
             return env_db
 
-        # If running on Vercel Serverless environment without remote DB, use /tmp for SQLite database
-        if os.environ.get("VERCEL") or "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
-            return "sqlite:////tmp/product_intelligence.db"
+        # Local development fallback
+        if env_db:
+            if env_db.startswith("postgres://"):
+                env_db = env_db.replace("postgres://", "postgresql://", 1)
+            return env_db
 
         if self.DATABASE_URL.startswith("sqlite:///") and not self.DATABASE_URL.startswith("sqlite:////"):
             rel_path = self.DATABASE_URL.replace("sqlite:///", "").lstrip("./")
