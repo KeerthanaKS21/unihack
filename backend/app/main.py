@@ -1,10 +1,15 @@
 import sys
 import os
 
-# Ensure backend root directory is on sys.path for Vercel Serverless Function execution
-backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
+# Ensure root, backend, and app directories are on sys.path for Vercel Serverless Function execution
+current_file = os.path.abspath(__file__)
+app_dir = os.path.dirname(current_file)
+backend_dir = os.path.dirname(app_dir)
+root_dir = os.path.dirname(backend_dir)
+
+for d in [root_dir, backend_dir, app_dir]:
+    if d and os.path.exists(d) and d not in sys.path:
+        sys.path.insert(0, d)
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
