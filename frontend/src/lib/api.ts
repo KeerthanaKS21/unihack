@@ -120,7 +120,7 @@ export const api = {
     }),
 
   extractProductFromDocument: (docId: number) =>
-    request<any>(`/documents/${docId}/extract`, {
+    request<any>(`/documents/${docId}/extract-product`, {
       method: 'POST',
     }),
 

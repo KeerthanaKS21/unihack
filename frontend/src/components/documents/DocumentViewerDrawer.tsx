@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import { api } from '@/lib/api';
 import { ProductExtractionResult } from '@/types';
 import Link from 'next/link';
 import {
@@ -43,16 +44,16 @@ export const DocumentViewerDrawer: React.FC = () => {
   // Initialize or fetch previously extracted product data
   useEffect(() => {
     if (viewingDocument) {
+      const docId = Number(viewingDocument.id);
       setProductData(viewingDocument.extractedProductData || null);
       setIdentificationData(null);
       setVersionData(null);
       setAiState(viewingDocument.extractedProductData ? 'completed' : 'idle');
 
       // Automatically fetch full intelligence pipeline if available
-      fetch(`http://localhost:8000/api/documents/${viewingDocument.id}`)
-        .then(res => res.json())
+      api.getDocumentById(docId)
         .then(data => {
-          if (data.extracted_product_data) {
+          if (data && data.extracted_product_data) {
             setProductData(data.extracted_product_data);
             setAiState('completed');
           }
@@ -60,8 +61,7 @@ export const DocumentViewerDrawer: React.FC = () => {
         .catch(() => {});
 
       // Fetch identification and version diff
-      fetch(`http://localhost:8000/api/documents/${viewingDocument.id}/detect-version`, { method: 'POST' })
-        .then(res => res.json())
+      api.detectVersion(docId)
         .then(vData => {
           setVersionData(vData);
         })
@@ -71,7 +71,10 @@ export const DocumentViewerDrawer: React.FC = () => {
 
   if (!viewingDocument) return null;
 
-  const backendDownloadUrl = `http://localhost:8000/uploads/${viewingDocument.filename}`;
+  const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  const backendDownloadUrl = isProduction 
+    ? `/uploads/${viewingDocument.filename}`
+    : `http://localhost:8000/uploads/${viewingDocument.filename}`;
 
   // Helper for raw text extraction
   const rawTextContent = viewingDocument.extractedText || 
@@ -90,34 +93,29 @@ export const DocumentViewerDrawer: React.FC = () => {
     setAiErrorMessage(null);
 
     try {
+      const docId = Number(viewingDocument.id);
       setAiState('extracting');
       
       // Step 1: Structured LLM Extraction
-      const extractRes = await fetch(`http://localhost:8000/api/documents/${viewingDocument.id}/extract-product`, {
-        method: 'POST'
-      });
-      if (!extractRes.ok) throw new Error(`Extraction failed (HTTP ${extractRes.status})`);
-      const extractedJson: ProductExtractionResult = await extractRes.json();
+      const extractedJson = await api.extractProductFromDocument(docId);
       setProductData(extractedJson);
 
       setAiState('validating');
 
       // Step 2: Multi-Factor Product Identification
-      const identRes = await fetch(`http://localhost:8000/api/documents/${viewingDocument.id}/identify-product`, {
-        method: 'POST'
-      });
-      if (identRes.ok) {
-        const identJson = await identRes.json();
+      try {
+        const identJson = await api.identifyProduct(docId);
         setIdentificationData(identJson);
+      } catch (identErr) {
+        console.warn('Identification step note:', identErr);
       }
 
       // Step 3: Unit Normalization, Version & Difference Detection
-      const versionRes = await fetch(`http://localhost:8000/api/documents/${viewingDocument.id}/detect-version`, {
-        method: 'POST'
-      });
-      if (versionRes.ok) {
-        const vJson = await versionRes.json();
+      try {
+        const vJson = await api.detectVersion(docId);
         setVersionData(vJson);
+      } catch (versionErr) {
+        console.warn('Version detection step note:', versionErr);
       }
 
       setAiState('completed');
@@ -125,7 +123,7 @@ export const DocumentViewerDrawer: React.FC = () => {
     } catch (err: any) {
       console.error('AI Processing Pipeline Error:', err);
       setAiState('error');
-      setAiErrorMessage('AI extraction failed. Please try again.');
+      setAiErrorMessage(err.message || 'AI extraction failed. Please try again.');
     }
   };
 
