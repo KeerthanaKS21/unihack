@@ -347,8 +347,13 @@ Output MUST follow this exact JSON schema:
                 num_unit_match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z%°\-\/~]+.*)?$', raw_val)
                 if num_unit_match:
                     num_str = num_unit_match.group(1)
-                    parsed_val = float(num_str) if '.' in num_str else int(num_str)
-                    parsed_unit = num_unit_match.group(2).strip() if num_unit_match.group(2) else None
+                    p_unit = num_unit_match.group(2).strip() if num_unit_match.group(2) else None
+                    if p_unit and (len(p_unit) > 15 or '(' in p_unit or ')' in p_unit):
+                        parsed_val = raw_val
+                        parsed_unit = None
+                    else:
+                        parsed_val = float(num_str) if '.' in num_str else int(num_str)
+                        parsed_unit = p_unit
                 elif raw_val.startswith("IP") or raw_val.startswith("NEMA"):
                     parsed_val = raw_val
                     parsed_unit = None
@@ -394,8 +399,13 @@ Output MUST follow this exact JSON schema:
                 num_unit_match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z%°\-\/~]+.*)?$', raw_val)
                 if num_unit_match:
                     num_str = num_unit_match.group(1)
-                    parsed_val = float(num_str) if '.' in num_str else int(num_str)
-                    parsed_unit = num_unit_match.group(2).strip() if num_unit_match.group(2) else None
+                    p_unit = num_unit_match.group(2).strip() if num_unit_match.group(2) else None
+                    if p_unit and (len(p_unit) > 15 or '(' in p_unit or ')' in p_unit):
+                        parsed_val = raw_val
+                        parsed_unit = None
+                    else:
+                        parsed_val = float(num_str) if '.' in num_str else int(num_str)
+                        parsed_unit = p_unit
 
                 specifications.append(ProductSpecificationItem(
                     attribute_name=clean_k,
